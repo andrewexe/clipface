@@ -123,3 +123,30 @@ def test_remove(harness):
     with harness.ctx.session_factory() as db:
         assert db.scalars(select(Streamer)).all() == []
     assert audit(harness)[-1] == "streamer.remove"
+
+
+def test_facecam_layout_is_validated_saved_and_audited(harness):
+    streamer_id = add(harness, "twitch.tv/shroud").json()["id"]
+    assert listing(harness)[0]["facecam"] is None
+
+    def patch(layout):
+        return harness.client.patch(
+            f"/streamers/{streamer_id}", json={"layout": layout}, headers=harness.auth
+        )
+
+    for bad in ({"facecam": {"x": 0.5}}, {"facecam": {"x": 2, "y": 0, "w": 0.5, "h": 0.5}},
+                {"facecam": {"x": 0, "y": 0, "w": 0.01, "h": 0.5}}):  # fmt: skip
+        assert patch(bad).status_code == 422, bad
+    ok = patch({"facecam": {"x": 0.7, "y": 0.6, "w": 0.3, "h": 0.4}})
+    assert ok.status_code == 200
+    assert ok.json()["facecam"] == {"x": 0.7, "y": 0.6, "w": 0.3, "h": 0.4}
+    assert patch({"facecam": {"x": 0.7, "y": 0.6, "w": 0.3, "h": 0.4}}).status_code == 200
+    assert patch({"facecam": None}).json()["facecam"] is None
+    assert audit(harness).count("streamer.layout") == 2  # set and cleared; the no-op is silent
+
+
+def test_frame_needs_footage(harness):
+    streamer_id = add(harness, "twitch.tv/shroud").json()["id"]
+    response = harness.client.get(f"/streamers/{streamer_id}/frame", headers=harness.auth)
+    assert response.status_code == 404 and "No recent footage" in response.json()["detail"]
+    assert harness.client.get("/streamers/999/frame", headers=harness.auth).status_code == 404

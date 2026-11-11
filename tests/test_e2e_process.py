@@ -76,7 +76,7 @@ def test_secret_survives_restart_and_never_logged(tmp_path, keyring_env):
     assert first.port, first.first_line
     health = httpx.get(f"{first.url}/health", headers=AUTH).json()
     assert health["status"] == "ok"
-    assert health["db"]["revision"] == "0001"
+    assert health["db"]["revision"] == "0002"
     saved = httpx.put(
         f"{first.url}/settings/secrets/anthropic_api_key", json={"value": SECRET}, headers=AUTH
     )
@@ -138,7 +138,7 @@ def test_frozen_engine_smoke(tmp_path):
     try:
         health = httpx.get(f"{engine.url}/health", headers=AUTH).json()
         assert health["status"] == "ok"
-        assert health["db"]["revision"] == "0001"  # migrations were bundled and ran
+        assert health["db"]["revision"] == "0002"  # migrations were bundled and ran
         listing = httpx.get(f"{engine.url}/settings/secrets", headers=AUTH)
         assert listing.status_code == 200
     finally:

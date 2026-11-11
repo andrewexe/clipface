@@ -24,6 +24,7 @@ import uvicorn
 from engine import __version__
 from engine.api.app import AppContext, create_app
 from engine.config import load_config
+from engine.control.spend import SpendLedger
 from engine.db.session import create_db_engine, run_migrations
 from engine.keychain import KeychainUnavailable, SecretStore
 from engine.logging_setup import SecretRedactor, setup_logging
@@ -31,6 +32,8 @@ from engine.monitor.platforms import Credentials, KickClient, TwitchClient
 from engine.monitor.service import Monitor
 from engine.recorder.service import Recorder
 from engine.recorder.store import SegmentStore
+from engine.render.pipeline import ClipPipeline
+from engine.scorer.transcribe import DeepgramTranscriber
 from engine.signals.service import SignalService
 
 log = logging.getLogger("engine")
@@ -68,6 +71,16 @@ def _credentials(secrets: SecretStore, id_name: str, secret_name: str):
         except KeychainUnavailable:
             return None
         return (client_id, client_secret) if client_id and client_secret else None
+
+    return read
+
+
+def _secret(secrets: SecretStore, name: str):
+    def read() -> str | None:
+        try:
+            return secrets.get(name)
+        except KeychainUnavailable:
+            return None
 
     return read
 
@@ -114,6 +127,16 @@ def main(argv: list[str] | None = None) -> int:
     ctx.signals = SignalService(
         ctx.session_factory, ctx.settings, store, monitor=ctx.monitor, clips=twitch
     )
+    ctx.pipeline = ClipPipeline(
+        ctx.session_factory,
+        config,
+        ctx.settings,
+        store,
+        SpendLedger(ctx.session_factory),
+        transcriber=DeepgramTranscriber(_secret(secrets, "transcription_api_key")),
+        is_recording=ctx.recorder.is_recording,
+    )
+    ctx.signals.add_listener(ctx.pipeline.on_moment)
     app = create_app(ctx)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

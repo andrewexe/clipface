@@ -100,3 +100,80 @@ def probe(path) -> dict:
         "width": int(size.group(1)) if size else None,
         "height": int(size.group(2)) if size else None,
     }
+
+
+def make_buffer(
+    store,
+    session_id: int,
+    seconds: int,
+    end_time: float,
+    size: str = "1280x720",
+    fps: int = 30,
+    source: str = "testsrc2",
+    beep_at: float | None = None,
+    segment_seconds: int = 10,
+    run: str = "100",
+) -> None:
+    """Fill a session's buffer with `seconds` of generated footage ending at `end_time`,
+    exactly as the recorder would have left it (segments + ffmpeg's list, clock-aligned).
+    `beep_at` puts one second of loud tone at that many seconds in; the rest is quiet."""
+    import os
+
+    folder = store.session_dir(session_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    if beep_at is None:
+        audio = "sine=frequency=330:sample_rate=48000,volume=0.05"
+    else:
+        audio = (
+            "sine=frequency=880:sample_rate=48000,"
+            f"volume='if(between(t,{beep_at},{beep_at + 1}),1.0,0.01)':eval=frame"
+        )
+    subprocess.run(
+        [
+            ffmpeg_path(),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"{source}=size={size}:rate={fps}",
+            "-f",
+            "lavfi",
+            "-i",
+            audio,
+            "-t",
+            str(seconds),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-g",
+            str(fps),
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "96k",
+            "-f",
+            "segment",
+            "-segment_time",
+            str(segment_seconds),
+            "-segment_format",
+            "mpegts",
+            "-reset_timestamps",
+            "1",
+            "-segment_list",
+            str(folder / f"{run}.csv"),
+            "-segment_list_type",
+            "csv",
+            str(folder / f"{run}_%06d.ts"),
+        ],  # fmt: skip
+        check=True,
+    )
+    for line in (folder / f"{run}.csv").read_text().splitlines():
+        name, _start, c_end = line.rsplit(",", 2)
+        stamp = end_time - seconds + float(c_end)
+        os.utime(folder / name, (stamp, stamp))

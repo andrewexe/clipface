@@ -12,7 +12,9 @@ from engine.db.audit import write_audit
 from engine.db.models import AuditLog, Base, Streamer, StreamSession
 from engine.db.session import create_db_engine, make_session_factory, run_migrations
 
-TABLES = {"streamers", "sessions", "moments", "clips", "accounts", "publish_jobs", "audit_log"}
+TABLES = {
+    "streamers", "sessions", "moments", "clips", "accounts", "publish_jobs", "audit_log", "spend",
+}  # fmt: skip
 
 
 @pytest.fixture
@@ -23,7 +25,7 @@ def db(tmp_path):
 
 
 def test_fresh_database_gets_all_tables(db):
-    assert run_migrations(db) == "0001"
+    assert run_migrations(db) == "0002"
     assert set(inspect(db).get_table_names()) == TABLES | {"alembic_version"}
 
 
@@ -32,7 +34,7 @@ def test_migrations_are_idempotent_and_keep_data(db):
     factory = make_session_factory(db)
     with factory.begin() as session:
         session.add(Streamer(platform="twitch", username="someone"))
-    assert run_migrations(db) == "0001"
+    assert run_migrations(db) == "0002"
     with factory() as session:
         assert session.query(Streamer).count() == 1
 
@@ -49,7 +51,7 @@ def test_path_with_spaces_and_percent(tmp_path):
     folder.mkdir()
     engine = create_db_engine(folder / "clipper.db")
     try:
-        assert run_migrations(engine) == "0001"
+        assert run_migrations(engine) == "0002"
     finally:
         engine.dispose()
 

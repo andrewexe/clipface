@@ -47,7 +47,7 @@ _SPECS = [
         "transcription_api_key",
         "Transcription API key",
         "Transcription",
-        "Provider with word-level timestamps; chosen in Phase 4.",
+        "A Deepgram API key. Used for captions; only clip audio is sent.",
     ),
 ]
 KNOWN_SECRETS: dict[str, SecretSpec] = {spec.name: spec for spec in _SPECS}

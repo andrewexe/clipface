@@ -77,6 +77,7 @@ class Streamer(Base):
     # Auto-publish stays off unless this is "granted" or "program".
     permission_status: Mapped[str] = mapped_column(String(16), default="none")
     program_rules: Mapped[dict | None] = mapped_column(JSON)
+    layout: Mapped[dict | None] = mapped_column(JSON)
     added_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
@@ -125,9 +126,10 @@ class Clip(Base):
     claude_score: Mapped[float | None] = mapped_column(Float)
     title: Mapped[str | None] = mapped_column(Text)
     caption: Mapped[str | None] = mapped_column(Text)
-    phash: Mapped[str | None] = mapped_column(String(64))
+    phash: Mapped[str | None] = mapped_column(Text)
     policy_result: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(16), default="pending")
+    meta: Mapped[dict | None] = mapped_column(JSON)
 
 
 class Account(Base):
@@ -177,4 +179,17 @@ class AuditLog(Base):
     actor: Mapped[str] = mapped_column(String(16))
     action: Mapped[str] = mapped_column(String(64))
     object_id: Mapped[str | None] = mapped_column(String(128))
+    details: Mapped[dict | None] = mapped_column(JSON)
+
+
+class Spend(Base):
+    """Money spent on paid APIs, so daily caps can be enforced."""
+
+    __tablename__ = "spend"
+    __table_args__ = (Index("ix_spend_service_ts", "service", "ts"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    service: Mapped[str] = mapped_column(String(32))
+    usd: Mapped[float] = mapped_column(Float)
     details: Mapped[dict | None] = mapped_column(JSON)

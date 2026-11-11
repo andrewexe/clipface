@@ -30,6 +30,13 @@ class AppSettings(BaseModel):
     detect_audio_z: float = Field(4.0, ge=2, le=12)
     detect_clips_count: int = Field(3, ge=0, le=50)  # viewer clips in 90 s; 0 turns it off
 
+    # Clips
+    clip_before_s: int = Field(30, ge=5, le=120)
+    clip_after_s: int = Field(10, ge=2, le=60)
+    captions: bool = True
+    transcription_usd_per_minute: float = Field(0.01, ge=0, le=1)
+    transcription_daily_cap_usd: float = Field(2.0, ge=0, le=1000)
+
 
 class SettingsStore:
     def __init__(self, path: Path) -> None:

@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0 - Phase 4: Render (2026-11-11)
+
+### Added
+
+- Clip pipeline: each detected moment is cut from 30 seconds before to 10 seconds after
+  its peak (both settings), checked for duplicates, transcribed, and rendered to a
+  1080x1920 H.264/AAC MP4 with loudness normalised to -14 LUFS.
+- Two layouts: the full frame over a blurred copy of itself (default), or, once a
+  streamer's facecam rectangle is saved, facecam on top and gameplay below.
+- Captions burned in from word timestamps, three words at a time. Transcript text is
+  treated as untrusted and cannot inject subtitle commands.
+- Transcription through Deepgram's pre-recorded API. Only the clip's audio is sent. A
+  daily spend cap (default $2) is checked before each call and recorded after it.
+  Without a key, or over the cap, clips still render, without captions, and say why.
+- Duplicates are skipped before any paid call or render: a moment whose window mostly
+  overlaps an existing clip, or whose frames look the same as a clip from the last 24
+  hours (64-bit difference hashes of one frame every 4 seconds).
+- Raw footage of a moment is deleted 6 hours later unless a pending or approved clip was
+  cut from it.
+- Database migration 0002: `streamers.layout`, `clips.meta`, wider `clips.phash`, and a
+  `spend` table.
+
+### Differs from PLAN.md
+
+- Deepgram is the transcription provider; the plan left it open. The interface is small,
+  so another provider with word timestamps can be swapped in.
+- An eighth table, `spend`, backs the daily spend caps.
+
 ## 0.4.0 - Phase 3: Signals and detector (2026-11-11)
 
 ### Added

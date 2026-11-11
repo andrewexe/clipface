@@ -23,6 +23,7 @@ from engine.db.session import current_revision, make_session_factory
 from engine.keychain import SecretStore
 from engine.monitor.service import Monitor
 from engine.recorder.service import Recorder
+from engine.render.pipeline import ClipPipeline
 from engine.settings import SettingsStore
 from engine.signals.service import SignalService
 
@@ -44,6 +45,7 @@ class AppContext:
     monitor: Monitor | None = None
     recorder: Recorder | None = None
     signals: SignalService | None = None
+    pipeline: ClipPipeline | None = None
     settings: SettingsStore = field(init=False)
     session_factory: sessionmaker[Session] = field(init=False)
     # Read once: the schema only changes at startup, and health is polled constantly.
@@ -57,7 +59,7 @@ class AppContext:
 
     def services(self) -> list:
         """Background services, in start order."""
-        return [self.monitor, self.recorder, self.signals]
+        return [self.monitor, self.recorder, self.signals, self.pipeline]
 
 
 def get_ctx(request: Request) -> AppContext:
