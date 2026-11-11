@@ -288,3 +288,93 @@ code,
   max-height: 70vh;
   overflow-y: auto;
 }
+
+.add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.add-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.streamer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.streamer:first-child {
+  border-top: none;
+  padding-top: 2px;
+}
+.streamer:last-child {
+  padding-bottom: 2px;
+}
+.streamer-main {
+  flex: 1;
+  min-width: 0;
+}
+.streamer-main .small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.streamer-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.streamer-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+.tag-twitch {
+  color: #b9a3ff;
+}
+.tag-kick {
+  color: #7ee08a;
+}
+
+.pill-live {
+  color: #fff;
+  background: var(--bad);
+  border-color: var(--bad);
+  font-weight: 600;
+}
+.pill-bad {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.btn-danger {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+}
+
+.banner-warn {
+  border-color: var(--wait);
+  background: rgba(217, 164, 65, 0.1);
+}

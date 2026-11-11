@@ -103,7 +103,48 @@ export type AuditEntry = {
   details: Record<string, unknown> | null;
 };
 
+export type PlatformStatus = {
+  state: "idle" | "ok" | "needs_keys" | "bad_keys" | "error";
+  message: string | null;
+  last_ok_at: string | null;
+};
+
+export type PermissionStatus = "none" | "asked" | "granted" | "program";
+
+export type Streamer = {
+  id: number;
+  platform: "twitch" | "kick";
+  username: string;
+  display_name: string | null;
+  url: string;
+  enabled: boolean;
+  permission_status: PermissionStatus;
+  added_at: string;
+  state: "live" | "offline" | "checking" | "paused" | "not_found";
+  last_checked_at: string | null;
+  session: {
+    id: number;
+    started_at: string;
+    title: string | null;
+    game: string | null;
+    viewer_count: number | null;
+  } | null;
+};
+
+export type StreamersResponse = {
+  streamers: Streamer[];
+  platforms: Record<string, PlatformStatus>;
+  poll_interval_s: number | null;
+};
+
 export const api = {
+  streamers: () => request<StreamersResponse>("GET", "/streamers"),
+  addStreamer: (url: string) => request<Streamer>("POST", "/streamers", { url }),
+  updateStreamer: (
+    id: number,
+    patch: { enabled?: boolean; permission_status?: PermissionStatus },
+  ) => request<Streamer>("PATCH", `/streamers/${id}`, patch),
+  removeStreamer: (id: number) => request<{ id: number }>("DELETE", `/streamers/${id}`),
   health: () => request<Health>("GET", "/health"),
   listSecrets: () =>
     request<{ keychain: Keychain; secrets: SecretInfo[] }>("GET", "/settings/secrets"),

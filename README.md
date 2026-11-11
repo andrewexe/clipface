@@ -4,8 +4,8 @@ A local-first desktop app that watches chosen Twitch and Kick streamers, finds h
 moments, renders vertical clips, and publishes them after a safety gate. The full plan is in
 [PLAN.md](PLAN.md); progress is in [CHANGELOG.md](CHANGELOG.md).
 
-**Status: Phase 0 (scaffold).** The app opens, starts its engine, stores API keys in the OS
-keychain, and runs database migrations. It does not watch streams yet.
+**Status: Phase 1.** The app stores API keys in the OS keychain, follows Twitch and Kick
+streamers you add by URL, and marks them live. It does not record or clip yet.
 
 ## Setup on Windows
 

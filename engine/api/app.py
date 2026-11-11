@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -18,6 +21,7 @@ from engine import __version__
 from engine.config import Config
 from engine.db.session import current_revision, make_session_factory
 from engine.keychain import SecretStore
+from engine.monitor.service import Monitor
 
 # The Tauri webview (Windows, then macOS/Linux) and the Vite dev server.
 ALLOWED_ORIGINS = [
@@ -34,6 +38,7 @@ class AppContext:
     token: str
     db_engine: Engine
     secrets: SecretStore
+    monitor: Monitor | None = None
     session_factory: sessionmaker[Session] = field(init=False)
     # Read once: the schema only changes at startup, and health is polled constantly.
     schema_revision: str | None = field(init=False)
@@ -60,9 +65,24 @@ def require_token(request: Request) -> None:
 
 
 def create_app(ctx: AppContext) -> FastAPI:
-    from engine.api import health, logs, settings
+    from engine.api import health, logs, settings, streamers
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Background services run inside the server's event loop for its whole life.
+        services = [svc for svc in (ctx.monitor,) if svc is not None]
+        tasks = [asyncio.create_task(svc.run()) for svc in services]
+        try:
+            yield
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            for svc in services:
+                await svc.aclose()
 
     app = FastAPI(
+        lifespan=lifespan,
         title="Clipper engine",
         version=__version__,
         docs_url=None,
@@ -77,7 +97,7 @@ def create_app(ctx: AppContext) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=ALLOWED_ORIGINS,
-        allow_methods=["GET", "PUT", "POST", "DELETE"],
+        allow_methods=["GET", "PUT", "POST", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
@@ -93,4 +113,5 @@ def create_app(ctx: AppContext) -> FastAPI:
     app.include_router(health.router)
     app.include_router(settings.router)
     app.include_router(logs.router)
+    app.include_router(streamers.router)
     return app

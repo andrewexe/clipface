@@ -55,3 +55,8 @@ def harness(tmp_path, memory_keyring) -> Harness:
     client = TestClient(create_app(ctx), base_url="http://127.0.0.1")
     yield Harness(client=client, ctx=ctx, keyring=memory_keyring, redactor=redactor)
     db_engine.dispose()
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"

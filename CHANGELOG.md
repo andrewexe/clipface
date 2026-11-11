@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0 - Phase 1: Streamers and live detection (2026-11-11)
+
+### Added
+
+- Paste a Twitch or Kick channel URL to follow a streamer. The parser handles `www.`, `m.`,
+  missing schemes, trailing paths, queries, popout and player links, and rejects lookalike
+  hosts, clip and video links, and bare names with a message that says what to paste.
+- Live monitor: polls Twitch (`helix/streams`) and Kick (`public/v1/channels`) every 20
+  seconds with app access tokens. Going live opens a row in `sessions`; going offline closes
+  it after two misses in a row, so one empty API response does not end a session.
+- Streamers page: add, pause, remove, set permission status, live state with title, game,
+  and viewer count, and a banner when a platform's keys are missing or rejected.
+- Channels that do not exist are flagged "Channel not found" instead of looking offline.
+
+### Differs from PLAN.md
+
+- Polling only, no Twitch EventSub. Twitch's docs say EventSub over WebSockets needs a user
+  access token (a Twitch login), and the webhook transport needs a public HTTPS endpoint,
+  which a desktop app does not have.
+- "Live within 60 seconds" holds from the moment the platform's API reports the stream.
+  Any delay inside Twitch's or Kick's API is added on top and is outside the app's control.
+
 ## 0.1.0 - Phase 0: Scaffold (2026-11-11)
 
 ### Added

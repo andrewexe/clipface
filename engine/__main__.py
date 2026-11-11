@@ -25,8 +25,10 @@ from engine import __version__
 from engine.api.app import AppContext, create_app
 from engine.config import load_config
 from engine.db.session import create_db_engine, run_migrations
-from engine.keychain import SecretStore
+from engine.keychain import KeychainUnavailable, SecretStore
 from engine.logging_setup import SecretRedactor, setup_logging
+from engine.monitor.platforms import Credentials, KickClient, TwitchClient
+from engine.monitor.service import Monitor
 
 log = logging.getLogger("engine")
 
@@ -52,6 +54,19 @@ def _exit_when_stdin_closes(server: uvicorn.Server) -> None:
 
     if sys.stdin is not None:
         threading.Thread(target=watch, name="stdin-watch", daemon=True).start()
+
+
+def _credentials(secrets: SecretStore, id_name: str, secret_name: str):
+    """Read a platform's keys from the keychain each time, so new keys apply at once."""
+
+    def read() -> Credentials | None:
+        try:
+            client_id, client_secret = secrets.get(id_name), secrets.get(secret_name)
+        except KeychainUnavailable:
+            return None
+        return (client_id, client_secret) if client_id and client_secret else None
+
+    return read
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,7 +101,17 @@ def main(argv: list[str] | None = None) -> int:
 
     secrets = SecretStore(redactor)
     secrets.warm()
-    app = create_app(AppContext(config=config, token=token, db_engine=db_engine, secrets=secrets))
+    ctx = AppContext(config=config, token=token, db_engine=db_engine, secrets=secrets)
+    ctx.monitor = Monitor(
+        ctx.session_factory,
+        {
+            "twitch": TwitchClient(
+                _credentials(secrets, "twitch_client_id", "twitch_client_secret")
+            ),
+            "kick": KickClient(_credentials(secrets, "kick_client_id", "kick_client_secret")),
+        },
+    )
+    app = create_app(ctx)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -103,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             app,
             log_config=None,
             access_log=False,
-            lifespan="off",
+            lifespan="on",
             timeout_graceful_shutdown=3,
         )
     )

@@ -9,7 +9,7 @@ from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
 from engine.db.audit import write_audit
-from engine.db.models import AuditLog, Base, Session, Streamer
+from engine.db.models import AuditLog, Base, Streamer, StreamSession
 from engine.db.session import create_db_engine, make_session_factory, run_migrations
 
 TABLES = {"streamers", "sessions", "moments", "clips", "accounts", "publish_jobs", "audit_log"}
@@ -65,7 +65,7 @@ def test_constraints_enforced(db):
         session.add(Streamer(platform="kick", username="x", permission_status="sure"))
 
     with pytest.raises(IntegrityError), factory.begin() as session:  # foreign keys are on
-        session.add(Session(streamer_id=999, started_at=datetime.now(UTC)))
+        session.add(StreamSession(streamer_id=999, started_at=datetime.now(UTC)))
 
     with factory.begin() as session:
         session.add(Streamer(platform="kick", username="dup"))

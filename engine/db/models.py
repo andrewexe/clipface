@@ -80,7 +80,7 @@ class Streamer(Base):
     added_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
-class Session(Base):
+class StreamSession(Base):
     __tablename__ = "sessions"
     __table_args__ = (Index("ix_sessions_streamer_id", "streamer_id"),)
 
