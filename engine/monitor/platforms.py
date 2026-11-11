@@ -227,6 +227,31 @@ class TwitchClient(_OAuthClient):
         snapshot.missing = set(to_verify) - set(snapshot.found)
         return snapshot
 
+    async def recent_clips(self, login: str, since: datetime) -> list[datetime]:
+        """Creation times of viewer-made clips of this channel since `since`."""
+        user_id = await self._user_id(login)
+        if user_id is None:
+            return []
+        body = await self._get(
+            f"{self.api}/clips",
+            [
+                ("broadcaster_id", user_id),
+                ("started_at", since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")),
+                ("first", "100"),
+            ],
+        )
+        times = [parse_time(row.get("created_at")) for row in _rows(body)]
+        return sorted(t for t in times if t is not None and t >= since)
+
+    async def _user_id(self, login: str) -> str | None:
+        cache: dict[str, str] = self.__dict__.setdefault("_user_ids", {})
+        if login not in cache:
+            body = await self._get(f"{self.api}/users", [("login", login)])
+            for row in _rows(body):
+                if str(row.get("login", "")).lower() == login and row.get("id"):
+                    cache[login] = str(row["id"])
+        return cache.get(login)
+
 
 class KickClient(_OAuthClient):
     platform = "kick"

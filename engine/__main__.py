@@ -31,6 +31,7 @@ from engine.monitor.platforms import Credentials, KickClient, TwitchClient
 from engine.monitor.service import Monitor
 from engine.recorder.service import Recorder
 from engine.recorder.store import SegmentStore
+from engine.signals.service import SignalService
 
 log = logging.getLogger("engine")
 
@@ -104,21 +105,15 @@ def main(argv: list[str] | None = None) -> int:
     secrets = SecretStore(redactor)
     secrets.warm()
     ctx = AppContext(config=config, token=token, db_engine=db_engine, secrets=secrets)
-    ctx.monitor = Monitor(
-        ctx.session_factory,
-        {
-            "twitch": TwitchClient(
-                _credentials(secrets, "twitch_client_id", "twitch_client_secret")
-            ),
-            "kick": KickClient(_credentials(secrets, "kick_client_id", "kick_client_secret")),
-        },
-    )
-    ctx.recorder = Recorder(
-        ctx.session_factory,
-        SegmentStore(config.buffer_dir, ctx.settings.get().segment_seconds),
-        ctx.settings,
-    )
+    twitch = TwitchClient(_credentials(secrets, "twitch_client_id", "twitch_client_secret"))
+    kick = KickClient(_credentials(secrets, "kick_client_id", "kick_client_secret"))
+    ctx.monitor = Monitor(ctx.session_factory, {"twitch": twitch, "kick": kick})
+    store = SegmentStore(config.buffer_dir, ctx.settings.get().segment_seconds)
+    ctx.recorder = Recorder(ctx.session_factory, store, ctx.settings)
     ctx.monitor.add_listener(ctx.recorder.on_session_event)
+    ctx.signals = SignalService(
+        ctx.session_factory, ctx.settings, store, monitor=ctx.monitor, clips=twitch
+    )
     app = create_app(ctx)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

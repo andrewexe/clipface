@@ -106,6 +106,43 @@ const RECORDING_FIELDS: NumberField[] = [
   },
 ];
 
+const DETECTION_FIELDS: NumberField[] = [
+  {
+    key: "detect_z_threshold",
+    label: "Sensitivity threshold",
+    unit: "z-score",
+    help: "How far chat must jump above its last 5 minutes to count as a moment. Lower finds more moments and more false alarms; 3 is the default, 4 to 6 is strict.",
+    min: 1.5,
+    max: 12,
+    step: 0.5,
+  },
+  {
+    key: "detect_cooldown_s",
+    label: "Cooldown",
+    unit: "seconds",
+    help: "At most one moment per streamer in this many seconds.",
+    min: 10,
+    max: 600,
+  },
+  {
+    key: "detect_audio_z",
+    label: "Audio threshold",
+    unit: "z-score",
+    help: "Same idea for loudness spikes in the stream's audio. The only signal available for Kick.",
+    min: 2,
+    max: 12,
+    step: 0.5,
+  },
+  {
+    key: "detect_clips_count",
+    label: "Viewer clips",
+    unit: "clips",
+    help: "Twitch only: this many viewer-made clips within 90 seconds also marks a moment. 0 turns it off.",
+    min: 0,
+    max: 50,
+  },
+];
+
 export function NumberSettings({ title, fields }: { title: string; fields: NumberField[] }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -216,6 +253,8 @@ export function Settings() {
       <h1>Settings</h1>
       <h2>Recording</h2>
       <NumberSettings title="Stream buffer" fields={RECORDING_FIELDS} />
+      <h2>Highlight detection</h2>
+      <NumberSettings title="When is it a moment?" fields={DETECTION_FIELDS} />
       <h2>API keys</h2>
       <p className="muted">
         Keys are saved to your operating system's keychain

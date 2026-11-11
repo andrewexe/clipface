@@ -109,7 +109,7 @@ def update_app_settings(patch: dict, ctx: AppContext = Depends(get_ctx)) -> dict
     if changes:
         with ctx.session_factory.begin() as session:
             write_audit(session, actor="user", action="settings.update", details=changes)
-        for service in (ctx.monitor, ctx.recorder):
+        for service in ctx.services():
             if service is not None:
                 service.wake()
     return settings.model_dump()

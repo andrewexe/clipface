@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.0 - Phase 3: Signals and detector (2026-11-11)
+
+### Added
+
+- Twitch chat reader over the official IRC WebSocket endpoint, read-only and without an
+  account. It keeps only channel, time and text; user names are never read or stored.
+- Signals per live session: chat messages per second, hype messages per second (emotes,
+  keywords, shouting, "?????"), audio loudness of the recorded segments, and as context
+  the viewer count and the number of viewer-made Twitch clips.
+- Detector: each signal's last 10 seconds are scored against its previous 5 minutes.
+  A score above the threshold (default z = 3, a setting) for at least 3 seconds starts a
+  burst; the strongest second of the burst becomes the moment. One moment per streamer
+  per 60 seconds; a second signal firing inside that window confirms the same moment.
+- Moments are saved to `moments` with their scores and written to the audit log.
+- `python -m engine.detector.replay` runs the detector over a recorded chat log to tune
+  the threshold; `tests/record_chat.py` records live chat activity for it (no text, no names).
+- Settings page: detection section (threshold, cooldown, audio threshold, viewer clips).
+
+### Differs from PLAN.md
+
+- The anonymous chat login the plan relies on works (tested against live Twitch chat) but
+  Twitch's docs describe only token logins. If Twitch ever closes it, chat signals stop
+  and detection continues on audio; the fix would be a "Connect Twitch" login.
+- Kick has no chat signal. Kick's public API has no endpoint to read chat, and its chat
+  webhook needs a public HTTPS address. Kick moments come from audio loudness spikes.
+- The score is a robust z-score: median and median absolute deviation instead of mean and
+  standard deviation, and message counts are compared on a square-root scale. A plain
+  z-score fired about three times as often on bursty chat and stayed blind for minutes
+  after each highlight.
+- "Viewer jumps" are recorded with each moment but do not trigger one on their own: the
+  viewer count only updates every 20 seconds and mostly jumps on raids.
+
 ## 0.3.0 - Phase 2: Rolling recorder (2026-11-11)
 
 ### Added

@@ -13,6 +13,7 @@ dependencies = [
     "httpx>=0.27",
     "streamlink>=8.6.3",
     "imageio-ffmpeg>=0.8.1",
+    "websockets>=17.4",
 ]
 
 [dependency-groups]

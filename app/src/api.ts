@@ -143,6 +143,11 @@ export type AppSettings = {
   disk_cap_gb: number;
   raw_retention_hours: number;
   stream_quality: string;
+  detect_z_threshold: number;
+  detect_cooldown_s: number;
+  detect_audio: boolean;
+  detect_audio_z: number;
+  detect_clips_count: number;
   [key: string]: number | string | boolean;
 };
 

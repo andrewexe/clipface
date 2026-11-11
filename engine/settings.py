@@ -23,6 +23,13 @@ class AppSettings(BaseModel):
     raw_retention_hours: float = Field(6.0, ge=0.5, le=72)
     stream_quality: str = Field("best", pattern=r"^[a-z0-9_,]{1,64}$")
 
+    # Highlight detection
+    detect_z_threshold: float = Field(3.0, ge=1.5, le=12)
+    detect_cooldown_s: int = Field(60, ge=10, le=600)
+    detect_audio: bool = True
+    detect_audio_z: float = Field(4.0, ge=2, le=12)
+    detect_clips_count: int = Field(3, ge=0, le=50)  # viewer clips in 90 s; 0 turns it off
+
 
 class SettingsStore:
     def __init__(self, path: Path) -> None:

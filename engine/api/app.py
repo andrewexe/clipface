@@ -24,6 +24,7 @@ from engine.keychain import SecretStore
 from engine.monitor.service import Monitor
 from engine.recorder.service import Recorder
 from engine.settings import SettingsStore
+from engine.signals.service import SignalService
 
 # The Tauri webview (Windows, then macOS/Linux) and the Vite dev server.
 ALLOWED_ORIGINS = [
@@ -42,6 +43,7 @@ class AppContext:
     secrets: SecretStore
     monitor: Monitor | None = None
     recorder: Recorder | None = None
+    signals: SignalService | None = None
     settings: SettingsStore = field(init=False)
     session_factory: sessionmaker[Session] = field(init=False)
     # Read once: the schema only changes at startup, and health is polled constantly.
@@ -52,6 +54,10 @@ class AppContext:
         self.session_factory = make_session_factory(self.db_engine)
         self.schema_revision = current_revision(self.db_engine)
         self.settings = SettingsStore(self.config.settings_file)
+
+    def services(self) -> list:
+        """Background services, in start order."""
+        return [self.monitor, self.recorder, self.signals]
 
 
 def get_ctx(request: Request) -> AppContext:
@@ -70,12 +76,12 @@ def require_token(request: Request) -> None:
 
 
 def create_app(ctx: AppContext) -> FastAPI:
-    from engine.api import health, logs, settings, streamers
+    from engine.api import health, logs, moments, settings, streamers
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # Background services run inside the server's event loop for its whole life.
-        services = [svc for svc in (ctx.monitor, ctx.recorder) if svc is not None]
+        services = [svc for svc in ctx.services() if svc is not None]
         tasks = [asyncio.create_task(svc.run()) for svc in services]
         try:
             yield
@@ -119,4 +125,5 @@ def create_app(ctx: AppContext) -> FastAPI:
     app.include_router(settings.router)
     app.include_router(logs.router)
     app.include_router(streamers.router)
+    app.include_router(moments.router)
     return app
