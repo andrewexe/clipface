@@ -43,6 +43,13 @@ class Config:
     def clips_dir(self) -> Path:
         return self.data_dir / "clips"
 
+    @property
+    def default_export_dir(self) -> Path:
+        try:
+            return Path(platformdirs.user_videos_dir()) / APP_NAME
+        except Exception:  # noqa: BLE001 - no Videos folder on this system
+            return self.data_dir / "export"
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)

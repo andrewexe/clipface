@@ -18,6 +18,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 SEGMENT_SUFFIX = ".ts"
+EXTRACT_INDEX = "extract.index"
 _OFFSET_WINDOW = 6  # segments either side used to steady the clock mapping
 
 
@@ -55,7 +56,10 @@ class SegmentStore:
         return sorted(int(p.name) for p in self.root.iterdir() if p.is_dir() and p.name.isdigit())
 
     def _files(self, session_id: int) -> list[tuple[Path, os.stat_result]]:
-        folder = self.session_dir(session_id)
+        return self._folder_files(self.session_dir(session_id))
+
+    @staticmethod
+    def _folder_files(folder: Path) -> list[tuple[Path, os.stat_result]]:
         if not folder.exists():
             return []
         files = []
@@ -70,14 +74,18 @@ class SegmentStore:
 
     def segments(self, session_id: int) -> list[Segment]:
         """Finished segments, oldest first, with clock times."""
-        files = dict((path.name, stat) for path, stat in self._files(session_id))
+        return self.folder_segments(self.session_dir(session_id))
+
+    def folder_segments(self, folder: Path) -> list[Segment]:
+        """The same, for any folder laid out like a session's buffer folder (the raw
+        footage copied out for a moment is one)."""
+        files = dict((path.name, stat) for path, stat in self._folder_files(folder))
         runs: dict[str, list[tuple[str, float, float]]] = {}
-        for name, c_start, c_end in self._listed(session_id):
+        for name, c_start, c_end in self._listed(folder):
             if name in files:
                 runs.setdefault(name.split("_", 1)[0], []).append((name, c_start, c_end))
 
         result: list[Segment] = []
-        folder = self.session_dir(session_id)
         for run in sorted(runs):
             entries = runs[run]
             # Data arrives in bursts, so a file can be closed late but never early. The
@@ -97,9 +105,9 @@ class SegmentStore:
         result.sort(key=lambda seg: seg.start)
         return result
 
-    def _listed(self, session_id: int) -> list[tuple[str, float, float]]:
+    @staticmethod
+    def _listed(folder: Path) -> list[tuple[str, float, float]]:
         rows = []
-        folder = self.session_dir(session_id)
         if not folder.exists():
             return rows
         for csv_path in sorted(folder.glob("*.csv")):
@@ -134,7 +142,27 @@ class SegmentStore:
                 except OSError:
                     shutil.copy2(seg.path, target)
             copies.append(Segment(path=target, start=seg.start, end=seg.end, size=seg.size))
+        if copies:
+            # Keep the timing with the footage, so the copy can be read back on its own.
+            (dest / EXTRACT_INDEX).write_text(
+                "".join(f"{c.path.name},{c.start:.6f},{c.end:.6f}\n" for c in copies),
+                encoding="utf-8",
+            )
         return copies
+
+    @staticmethod
+    def read_extract(folder: Path) -> list[Segment]:
+        """Segments previously copied out with `extract`, with their original timing."""
+        index = folder / EXTRACT_INDEX
+        if not index.exists():
+            return []
+        result = []
+        for line in index.read_text(encoding="utf-8").splitlines():
+            parts = line.rsplit(",", 2)
+            path = folder / Path(parts[0]).name
+            if len(parts) == 3 and path.exists():
+                result.append(Segment(path, float(parts[1]), float(parts[2]), path.stat().st_size))
+        return result
 
     def total_bytes(self) -> int:
         return sum(stat.st_size for sid in self.session_ids() for _path, stat in self._files(sid))

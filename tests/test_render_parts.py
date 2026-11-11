@@ -123,6 +123,23 @@ def test_similarity_rules():
     assert not frames.is_duplicate([0, 0, 0], [0, 0, 0])  # black frames prove nothing
 
 
+def test_audio_match_allows_a_shift_and_rejects_flat_or_different_sound():
+    curve = (
+        [-40.0] * 12 + [-8.0, -10.0, -15.0, -30.0] + [-40.0] * 12 + [-20.0, -12.0] + [-40.0] * 10
+    )
+    assert frames.audio_matches(curve, curve)
+    assert frames.audio_matches(curve, curve[7:] + [-40.0] * 7)  # same sound, 7 s later
+    assert frames.audio_matches(curve, [level + 6 for level in curve])  # louder copy
+    other = [-40.0] * 5 + [-9.0] * 3 + [-40.0] * 20 + [-11.0] * 4 + [-40.0] * 8
+    assert not frames.audio_matches(curve, other)
+    flat = [-35.0] * 40
+    assert not frames.audio_matches(flat, flat)  # silence proves nothing
+    assert not frames.audio_matches(curve, []) and not frames.audio_matches([], [])
+    same_frames = [0xFFFF0000FFFF0000, 0x00FF00FF00FF00FF]
+    assert frames.same_footage(same_frames, curve, same_frames, curve)
+    assert not frames.same_footage(same_frames, curve, same_frames, other)
+
+
 # -- transcription client ---------------------------------------------------------------
 
 

@@ -6,6 +6,7 @@ import {
   type Streamer,
   type StreamersResponse,
 } from "../api";
+import { FacecamEditor } from "./FacecamEditor";
 
 const PLATFORM_NAMES: Record<string, string> = { twitch: "Twitch", kick: "Kick" };
 
@@ -92,6 +93,7 @@ function PlatformBanner({ name, status }: { name: string; status: PlatformStatus
 function StreamerRow({ streamer, onChanged }: { streamer: Streamer; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [editingLayout, setEditingLayout] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const run = async (action: () => Promise<unknown>) => {
@@ -162,6 +164,14 @@ function StreamerRow({ streamer, onChanged }: { streamer: Streamer; onChanged: (
         <button
           className="btn"
           disabled={busy}
+          onClick={() => setEditingLayout(true)}
+          title="Mark where the facecam is, for the clip layout"
+        >
+          {streamer.facecam ? "Facecam ✓" : "Facecam"}
+        </button>
+        <button
+          className="btn"
+          disabled={busy}
           onClick={() =>
             void run(() => api.updateStreamer(streamer.id, { enabled: !streamer.enabled }))
           }
@@ -187,6 +197,16 @@ function StreamerRow({ streamer, onChanged }: { streamer: Streamer; onChanged: (
           </button>
         )}
       </div>
+      {editingLayout && (
+        <FacecamEditor
+          streamer={streamer}
+          onClose={() => setEditingLayout(false)}
+          onSaved={() => {
+            setEditingLayout(false);
+            onChanged();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.0 - Phase 5: Review queue (MVP complete) (2026-11-11)
+
+### Added
+
+- Queue page: clips to review on the left, a looping preview on the right, with title
+  (100 characters) and caption editing, the streamer credit, what triggered the moment,
+  and the transcript. `A` approves, `R` rejects, arrow keys move through the list.
+- Approving a clip copies it to the export folder as "<streamer> - <title> [<id>].mp4"
+  with a text file holding the title, caption and the credit line with the channel link.
+  The folder defaults to `Videos\Clipper` and is a setting. If the folder can't be
+  written, the clip is still approved and the queue says why it was not exported.
+- Approved and Rejected tabs, with "Back to review" to undo and "Export again".
+- Facecam editor on the Streamers page: drag a box over a recent frame of the stream.
+  "Re-render" on a clip applies the new layout without paying for transcription again.
+- A reminder on each clip when no permission is recorded for its streamer.
+
+### Changed
+
+- Two clips now count as the same footage only when both the pictures and the sound
+  match. Pictures alone would have rejected every later moment from a streamer sitting
+  in front of a fixed camera.
+
 ## 0.5.0 - Phase 4: Render (2026-11-11)
 
 ### Added

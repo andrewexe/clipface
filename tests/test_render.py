@@ -299,6 +299,21 @@ def test_duplicate_moments_are_skipped(rig):
     assert not (rig.config.raw_dir / f"moment_{replayed}").exists()
 
 
+def test_same_picture_with_different_sound_is_not_a_duplicate(rig):
+    """A streamer on a fixed camera looks the same all night; the moments still differ."""
+    first = add_moment(rig, peak=NOW - 15)
+    assert rig.pipeline.process(first) == "clipped"
+    later_store = SegmentStore(rig.config.data_dir / "later")
+    # The same test card, but different sound: beeps at other times.
+    make_buffer(later_store, 1, seconds=60, end_time=NOW + 600, beep_at=[22, 30, 41])
+    rig.pipeline._store = later_store
+    rig.clock[0] = NOW + 605
+    second = add_moment(rig, peak=NOW + 600 - 15)
+    assert rig.pipeline.process(second) == "clipped"
+    with rig.factory() as db:
+        assert len(db.scalars(select(Clip)).all()) == 2
+
+
 def test_waits_for_footage_then_gives_up(rig):
     moment_id = add_moment(rig, peak=NOW - 2)  # needs footage until NOW+8; buffer ends at NOW
     assert rig.pipeline.process(moment_id) == "waiting"
@@ -402,3 +417,30 @@ def test_run_pending_survives_a_crashing_moment_and_cleans_old_raw(rig):
     os.utime(fresh, (NOW, NOW))
     assert rig.pipeline.clean_raw() == 1
     assert not stale.exists() and fresh.exists()
+
+
+def test_rerender_uses_the_new_layout_and_keeps_captions(rig):
+    moment_id = add_moment(rig, peak=NOW - 15)
+    assert rig.pipeline.process(moment_id) == "clipped"
+    with rig.factory.begin() as db:
+        clip_id = db.scalars(select(Clip.id)).one()
+        db.get(Streamer, 1).layout = {"facecam": {"x": 0.7, "y": 0.6, "w": 0.3, "h": 0.4}}
+    before = (rig.config.clips_dir / f"clip_{clip_id}.mp4").read_bytes()
+
+    rig.pipeline.rerender(clip_id)
+
+    clip = get(rig, Clip, clip_id)
+    assert clip.meta["layout"] == "split" and clip.meta["captions"] is True
+    after = rig.config.clips_dir / f"clip_{clip_id}.mp4"
+    assert after.read_bytes() != before and abs(probe(after).duration - 40) < 0.3
+    assert rig.transcriber.calls == 1  # the saved transcript was reused, not paid for again
+    with rig.factory() as db:
+        assert [a.action for a in db.scalars(select(AuditLog))] == ["clip.render", "clip.rerender"]
+
+    import shutil
+
+    from engine.render.render import RenderError
+
+    shutil.rmtree(rig.config.raw_dir / f"moment_{moment_id}")
+    with pytest.raises(RenderError, match="raw footage"):
+        rig.pipeline.rerender(clip_id)

@@ -78,7 +78,7 @@ def require_token(request: Request) -> None:
 
 
 def create_app(ctx: AppContext) -> FastAPI:
-    from engine.api import health, logs, moments, settings, streamers
+    from engine.api import clips, health, logs, moments, settings, streamers
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -128,4 +128,5 @@ def create_app(ctx: AppContext) -> FastAPI:
     app.include_router(logs.router)
     app.include_router(streamers.router)
     app.include_router(moments.router)
+    app.include_router(clips.router)
     return app

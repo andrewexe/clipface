@@ -4,8 +4,10 @@ A local-first desktop app that watches chosen Twitch and Kick streamers, finds h
 moments, renders vertical clips, and publishes them after a safety gate. The full plan is in
 [PLAN.md](PLAN.md); progress is in [CHANGELOG.md](CHANGELOG.md).
 
-**Status: Phase 1.** The app stores API keys in the OS keychain, follows Twitch and Kick
-streamers you add by URL, and marks them live. It does not record or clip yet.
+**Status: MVP (Phases 0 to 5).** The app follows Twitch and Kick streamers, records a
+rolling buffer while they are live, detects highlight moments, renders vertical clips with
+captions, and puts them in a review queue. Approved clips are exported to a folder for
+manual upload. Nothing is published automatically.
 
 ## Setup on Windows
 

@@ -42,6 +42,7 @@ from engine.scorer.transcribe import (
     TranscriptionKeyMissing,
 )
 from engine.settings import AppSettings, SettingsStore
+from engine.signals.audio import loudness_per_second
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ FOOTAGE_WAIT_S = 180  # how long after the peak we keep waiting for footage to l
 MIN_CLIP_S = 8.0
 DEDUPE_LOOKBACK_H = 24
 WORDS_FILE = "words.json"
+WINDOW_FILE = "window.json"
 
 
 @dataclass
@@ -198,7 +200,13 @@ class ClipPipeline:
         duration = end - start
 
         hashes = frames.frame_hashes(Path(CONCAT_LIST), CONCAT_ARGS, offset, duration, cwd=work)
-        duplicate = self._lookalike_clip(streamer_id, hashes)
+        loudness = [
+            round(level, 1)
+            for level in loudness_per_second(
+                Path(CONCAT_LIST), input_args=CONCAT_ARGS, start=offset, duration=duration, cwd=work
+            )
+        ]
+        duplicate = self._lookalike_clip(streamer_id, hashes, loudness)
         if duplicate is not None:
             return self._reject(moment_id, f"looks the same as clip {duplicate}", duplicate)
 
@@ -242,6 +250,7 @@ class ClipPipeline:
             tmp.unlink(missing_ok=True)
             return self._reject(moment_id, f"render failed: {exc}")
 
+        (work / WINDOW_FILE).write_text(json.dumps({"start": start}), encoding="utf-8")
         (work / WORDS_FILE).write_text(
             json.dumps([[w.text, round(w.start, 3), round(w.end, 3)] for w in words]),
             encoding="utf-8",
@@ -260,6 +269,9 @@ class ClipPipeline:
                 "captions": result.captions,
                 "captions_note": captions_note,
                 "layout": result.layout,
+                # Loudness of the whole window, second by second: with the frame hashes,
+                # this is how a later clip of the same footage is recognised.
+                "loudness": loudness,
             },
         )
         for listener in self._listeners:
@@ -309,13 +321,16 @@ class ClipPipeline:
                 return clip_id
         return None
 
-    def _lookalike_clip(self, streamer_id: int, hashes: list[int]) -> int | None:
-        if not hashes:
+    def _lookalike_clip(
+        self, streamer_id: int, hashes: list[int], loudness: list[float]
+    ) -> int | None:
+        """A recent clip of this streamer with the same pictures and the same sound."""
+        if not hashes or not loudness:
             return None
         since = datetime.fromtimestamp(self._clock(), UTC) - timedelta(hours=DEDUPE_LOOKBACK_H)
         with self._session_factory() as db:
             clips = db.execute(
-                select(Clip.id, Clip.phash)
+                select(Clip.id, Clip.phash, Clip.meta)
                 .join(Moment, Moment.id == Clip.moment_id)
                 .join(StreamSession, StreamSession.id == Moment.session_id)
                 .where(
@@ -324,8 +339,9 @@ class ClipPipeline:
                     Clip.start_ts >= since,
                 )
             ).all()
-        for clip_id, phash in clips:
-            if frames.is_duplicate(hashes, frames.decode(phash)):
+        for clip_id, phash, meta in clips:
+            other_loudness = (meta or {}).get("loudness") or []
+            if frames.same_footage(hashes, loudness, frames.decode(phash), other_loudness):
                 return clip_id
         return None
 
@@ -405,6 +421,70 @@ class ClipPipeline:
         log.info("moment %s dropped: %s", moment_id, reason)
         shutil.rmtree(self._config.raw_dir / f"moment_{moment_id}", ignore_errors=True)
         return "rejected"
+
+    def rerender(self, clip_id: int) -> None:
+        """Render a clip again from its raw footage, with the streamer's current layout.
+        Raises RenderError if the raw footage is gone."""
+        settings = self._settings.get()
+        with self._session_factory() as db:
+            clip = db.get(Clip, clip_id)
+            if clip is None:
+                raise RenderError("clip not found")
+            moment = db.get(Moment, clip.moment_id)
+            stream = db.get(StreamSession, moment.session_id)
+            layout = db.get(Streamer, stream.streamer_id).layout
+            start, end = clip.start_ts.timestamp(), clip.end_ts.timestamp()
+            moment_id, final = moment.id, Path(clip.file_path or "")
+        work = self._config.raw_dir / f"moment_{moment_id}"
+        copies = [
+            seg for seg in SegmentStore.read_extract(work) if seg.end > start and seg.start < end
+        ]
+        if not copies or not final.name:
+            raise RenderError("the raw footage for this clip has been deleted")
+        names = [seg.path.name for seg in copies]
+        offset = max(0.0, start - copies[0].start)
+        words: list[Word] = []
+        words_file = work / WORDS_FILE
+        if settings.captions and words_file.exists():
+            window_start = float(json.loads((work / WINDOW_FILE).read_text())["start"])
+            shift = start - window_start
+            words = [
+                Word(text, w_start - shift, w_end - shift)
+                for text, w_start, w_end in json.loads(words_file.read_text(encoding="utf-8"))
+                if w_end > shift and w_start < shift + (end - start)
+            ]
+        tmp = final.with_name(f"rendering_clip_{clip_id}.mp4")
+        try:
+            result = render_clip(
+                work=work,
+                segment_names=names,
+                offset=offset,
+                duration=end - start,
+                out=tmp,
+                layout=layout,
+                ass_text=build_ass(words, end - start) if words else None,
+            )
+        except RenderError:
+            tmp.unlink(missing_ok=True)
+            raise
+        tmp.replace(final)
+        make_thumbnail(final, final.with_suffix(".jpg"), at=result.duration / 2)
+        with self._session_factory.begin() as db:
+            clip = db.get(Clip, clip_id)
+            clip.meta = {
+                **(clip.meta or {}),
+                "layout": result.layout,
+                "captions": result.captions,
+                "render_seconds": round(result.seconds_taken, 1),
+                "exported_path": None,
+            }
+            write_audit(
+                db,
+                actor="user",
+                action="clip.rerender",
+                object_id=f"clip:{clip_id}",
+                details={"layout": result.layout},
+            )
 
     # -- housekeeping -----------------------------------------------------------------
 

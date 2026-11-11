@@ -3,6 +3,10 @@
 Each sampled frame is shrunk to 9x8 grey pixels and reduced to 64 bits: one bit per
 pixel pair, set when the left pixel is brighter (a "difference hash"). Small changes
 (re-encoding, captions, a slight shift) flip few bits; different pictures flip about half.
+
+Pictures alone are not enough: a streamer talking to a fixed camera looks the same all
+night. So two clips only count as the same footage when their sound matches too: the
+per-second loudness of one must line up closely with the other at some small shift.
 """
 
 from __future__ import annotations
@@ -97,3 +101,37 @@ def similarity(a: list[int], b: list[int]) -> float:
 
 def is_duplicate(a: list[int], b: list[int]) -> bool:
     return similarity(a, b) >= MATCH_SHARE
+
+
+AUDIO_MAX_SHIFT_S = 12
+AUDIO_MIN_OVERLAP_S = 10
+AUDIO_MIN_CORRELATION = 0.9
+_AUDIO_MIN_SPREAD_DB = 1.0  # flatter than this and the shape of the sound proves nothing
+
+
+def audio_matches(a: list[float], b: list[float]) -> bool:
+    """Do two per-second loudness curves show the same sound, allowing a small shift?"""
+    for shift in range(-AUDIO_MAX_SHIFT_S, AUDIO_MAX_SHIFT_S + 1):
+        xs = a[max(0, shift) :]
+        ys = b[max(0, -shift) :]
+        n = min(len(xs), len(ys))
+        if n >= AUDIO_MIN_OVERLAP_S and _correlation(xs[:n], ys[:n]) >= AUDIO_MIN_CORRELATION:
+            return True
+    return False
+
+
+def _correlation(xs: list[float], ys: list[float]) -> float:
+    n = len(xs)
+    mean_x, mean_y = sum(xs) / n, sum(ys) / n
+    var_x = sum((x - mean_x) ** 2 for x in xs) / n
+    var_y = sum((y - mean_y) ** 2 for y in ys) / n
+    if var_x**0.5 < _AUDIO_MIN_SPREAD_DB or var_y**0.5 < _AUDIO_MIN_SPREAD_DB:
+        return 0.0
+    covariance = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True)) / n
+    return covariance / (var_x * var_y) ** 0.5
+
+
+def same_footage(
+    frames_a: list[int], audio_a: list[float], frames_b: list[int], audio_b: list[float]
+) -> bool:
+    return is_duplicate(frames_a, frames_b) and audio_matches(audio_a, audio_b)

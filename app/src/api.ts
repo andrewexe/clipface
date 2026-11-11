@@ -76,6 +76,27 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await response.json()) as T;
 }
 
+/** Fetch a file from the engine (video, image) as a blob. The session token goes in a
+ *  header, so it never appears in a URL. */
+export async function fetchBlob(path: string): Promise<Blob> {
+  connection ??= connect();
+  const conn = await connection;
+  const response = await fetch(conn.baseUrl + path, {
+    headers: { Authorization: `Bearer ${conn.token}` },
+  });
+  if (!response.ok) {
+    let detail = `Engine returned ${response.status}`;
+    try {
+      const data = await response.json();
+      if (typeof data.detail === "string") detail = data.detail;
+    } catch {
+      // keep the status-code message
+    }
+    throw new EngineError(detail, response.status);
+  }
+  return await response.blob();
+}
+
 export type Health = {
   status: "ok" | "degraded";
   version: string;
@@ -119,6 +140,7 @@ export type Streamer = {
   url: string;
   enabled: boolean;
   permission_status: PermissionStatus;
+  facecam: Facecam | null;
   added_at: string;
   state: "live" | "offline" | "checking" | "paused" | "not_found";
   last_checked_at: string | null;
@@ -137,6 +159,48 @@ export type Streamer = {
   } | null;
 };
 
+export type Facecam = { x: number; y: number; w: number; h: number };
+
+export type ClipStatus = "pending" | "approved" | "rejected" | "published" | "removed";
+
+export type Clip = {
+  id: number;
+  status: ClipStatus;
+  title: string | null;
+  caption: string | null;
+  transcript: string | null;
+  score: number | null;
+  start_ts: string;
+  duration: number;
+  streamer: {
+    id: number;
+    name: string;
+    platform: "twitch" | "kick";
+    url: string;
+    permission_status: PermissionStatus;
+  };
+  credit: string;
+  triggers: string[];
+  signal_scores: Record<string, unknown> | null;
+  policy: Record<string, unknown> | null;
+  meta: {
+    captions?: boolean;
+    captions_note?: string | null;
+    layout?: string;
+    exported_path?: string | null;
+    reasons?: string[];
+    [key: string]: unknown;
+  };
+  has_video: boolean;
+  export_error?: string | null;
+};
+
+export type ClipsResponse = {
+  clips: Clip[];
+  counts: Partial<Record<ClipStatus, number>>;
+  export_dir: string;
+};
+
 export type AppSettings = {
   buffer_minutes: number;
   segment_seconds: number;
@@ -148,6 +212,11 @@ export type AppSettings = {
   detect_audio: boolean;
   detect_audio_z: number;
   detect_clips_count: number;
+  clip_before_s: number;
+  clip_after_s: number;
+  captions: boolean;
+  transcription_daily_cap_usd: number;
+  export_dir: string;
   [key: string]: number | string | boolean;
 };
 
@@ -159,6 +228,11 @@ export type StreamersResponse = {
 };
 
 export const api = {
+  clips: (status: ClipStatus) => request<ClipsResponse>("GET", `/clips?status=${status}`),
+  editClip: (id: number, patch: { title?: string; caption?: string }) =>
+    request<Clip>("PATCH", `/clips/${id}`, patch),
+  clipAction: (id: number, action: "approve" | "reject" | "restore" | "export" | "rerender") =>
+    request<Clip>("POST", `/clips/${id}/${action}`),
   appSettings: () => request<AppSettings>("GET", "/settings/app"),
   updateAppSettings: (patch: Partial<AppSettings>) =>
     request<AppSettings>("PATCH", "/settings/app", patch),
@@ -166,7 +240,11 @@ export const api = {
   addStreamer: (url: string) => request<Streamer>("POST", "/streamers", { url }),
   updateStreamer: (
     id: number,
-    patch: { enabled?: boolean; permission_status?: PermissionStatus },
+    patch: {
+      enabled?: boolean;
+      permission_status?: PermissionStatus;
+      layout?: { facecam: Facecam | null };
+    },
   ) => request<Streamer>("PATCH", `/streamers/${id}`, patch),
   removeStreamer: (id: number) => request<{ id: number }>("DELETE", `/streamers/${id}`),
   health: () => request<Health>("GET", "/health"),

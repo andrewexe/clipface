@@ -13,7 +13,14 @@ class TestPatternSource:
 
     __test__ = False
 
-    def __init__(self, seconds: float | None = None, size: str = "320x180", bitrate: str = "300k"):
+    def __init__(
+        self,
+        seconds: float | None = None,
+        size: str = "320x180",
+        bitrate: str = "300k",
+        pattern: str = "testsrc2",
+    ):
+        self.pattern = pattern
         self.seconds = seconds
         self.size = size
         self.bitrate = bitrate
@@ -35,7 +42,7 @@ class TestPatternSource:
                 "-f",
                 "lavfi",
                 "-i",
-                f"testsrc2=size={self.size}:rate=30",
+                f"{self.pattern}=size={self.size}:rate=30",
                 "-f",
                 "lavfi",
                 "-i",
@@ -110,7 +117,7 @@ def make_buffer(
     size: str = "1280x720",
     fps: int = 30,
     source: str = "testsrc2",
-    beep_at: float | None = None,
+    beep_at: float | list[float] | None = None,
     segment_seconds: int = 10,
     run: str = "100",
 ) -> None:
@@ -124,10 +131,9 @@ def make_buffer(
     if beep_at is None:
         audio = "sine=frequency=330:sample_rate=48000,volume=0.05"
     else:
-        audio = (
-            "sine=frequency=880:sample_rate=48000,"
-            f"volume='if(between(t,{beep_at},{beep_at + 1}),1.0,0.01)':eval=frame"
-        )
+        times = beep_at if isinstance(beep_at, list) else [beep_at]
+        loud = "+".join(f"between(t,{t},{t + 1})" for t in times)
+        audio = f"sine=frequency=880:sample_rate=48000,volume='if({loud},1.0,0.01)':eval=frame"
     subprocess.run(
         [
             ffmpeg_path(),

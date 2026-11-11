@@ -17,8 +17,21 @@ SAMPLE_RATE = 8000
 SILENCE_DB = -90.0
 
 
-def loudness_per_second(path: Path, timeout_s: float = 30.0) -> list[float]:
+def loudness_per_second(
+    path: Path,
+    timeout_s: float = 30.0,
+    *,
+    input_args: list[str] | None = None,
+    start: float | None = None,
+    duration: float | None = None,
+    cwd: Path | None = None,
+) -> list[float]:
     """RMS level of each second of audio. Empty if the file has no readable audio."""
+    seek = []
+    if start is not None:
+        seek += ["-ss", f"{start:.3f}"]
+    if duration is not None:
+        seek += ["-t", f"{duration:.3f}"]
     try:
         done = subprocess.run(
             [
@@ -27,6 +40,8 @@ def loudness_per_second(path: Path, timeout_s: float = 30.0) -> list[float]:
                 "-loglevel",
                 "error",
                 "-nostdin",
+                *(input_args or []),
+                *seek,
                 "-i",
                 str(path),
                 "-vn",
@@ -40,6 +55,7 @@ def loudness_per_second(path: Path, timeout_s: float = 30.0) -> list[float]:
             ],  # fmt: skip
             capture_output=True,
             timeout=timeout_s,
+            cwd=cwd,
             **no_window_kwargs(),
         )
     except (OSError, subprocess.TimeoutExpired):
