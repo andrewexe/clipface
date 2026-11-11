@@ -32,7 +32,12 @@ class StreamerPatch(BaseModel):
     permission_status: PermissionStatus | None = None
 
 
-def _view(streamer: Streamer, live: StreamSession | None, status: StreamerStatus) -> dict:
+def _view(
+    streamer: Streamer,
+    live: StreamSession | None,
+    status: StreamerStatus,
+    recording: dict | None = None,
+) -> dict:
     if live is not None:
         state = "live"
     elif status.exists is False:
@@ -62,6 +67,7 @@ def _view(streamer: Streamer, live: StreamSession | None, status: StreamerStatus
             "title": live.title,
             "game": live.game,
             "viewer_count": status.viewer_count,
+            "recording": recording,
         },
     }
 
@@ -89,8 +95,13 @@ def _get_or_404(db: Session, streamer_id: int) -> Streamer:
 def list_streamers(ctx: AppContext = Depends(get_ctx)) -> dict:
     with ctx.session_factory() as db:
         streamers = db.scalars(select(Streamer).order_by(Streamer.added_at, Streamer.id)).all()
-        items = [_view(s, _open_session(db, s.id), _status(ctx, s.id)) for s in streamers]
+        items = []
+        for streamer in streamers:
+            live = _open_session(db, streamer.id)
+            recording = ctx.recorder.status(live.id) if ctx.recorder and live else None
+            items.append(_view(streamer, live, _status(ctx, streamer.id), recording))
     return {
+        "recorder": ctx.recorder.summary() if ctx.recorder else None,
         "streamers": items,
         "platforms": ctx.monitor.platform_status() if ctx.monitor else {},
         "poll_interval_s": ctx.monitor.poll_interval_s if ctx.monitor else None,

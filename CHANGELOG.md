@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 - Phase 2: Rolling recorder (2026-11-11)
+
+### Added
+
+- Recorder: while a streamer is live, Streamlink reads the stream and ffmpeg cuts it into
+  10-second segments without re-encoding. One worker per live session; it stops when the
+  session ends and restarts with a growing pause if the stream drops.
+- Rolling buffer: the last 20 minutes per streamer are kept, older segments are deleted,
+  buffers of ended streams are removed after 6 hours, and a total disk limit deletes the
+  oldest footage first. All four values are settings.
+- Footage for a time window can be copied out of the buffer so pruning cannot remove it
+  (used by the renderer in Phase 4).
+- Settings page: recording section (buffer length, disk limit, raw footage retention).
+  Non-secret settings live in `settings.json` in the data folder; changes are audited.
+- Streamers page shows whether each live stream is being recorded and how much is kept.
+- ffmpeg is found on PATH or falls back to the copy shipped with the app.
+
+### Differs from PLAN.md
+
+- Segment timing comes from ffmpeg's own segment list, mapped to clock time, rather than
+  from file timestamps. Streams arrive in bursts, so file times alone misplace segments.
+- Embedded ad breaks are skipped while recording (Streamlink's ad filter) so ads cannot end
+  up inside a clip.
+
 ## 0.2.0 - Phase 1: Streamers and live detection (2026-11-11)
 
 ### Added

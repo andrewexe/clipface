@@ -378,3 +378,52 @@ select {
   border-color: var(--wait);
   background: rgba(217, 164, 65, 0.1);
 }
+
+.rec-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bad);
+  margin-right: 3px;
+}
+
+.number-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.number-row:first-of-type {
+  border-top: none;
+}
+.number-row label {
+  font-weight: 600;
+}
+.number-row p {
+  margin: 2px 0 0;
+}
+.number-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.number-input input {
+  width: 90px;
+  text-align: right;
+}
+.form-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+}
+h2 {
+  margin-top: 22px;
+}
+h1 + h2 {
+  margin-top: 0;
+}

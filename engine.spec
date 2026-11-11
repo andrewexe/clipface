@@ -5,13 +5,14 @@
 #
 # Output: dist/clipper-engine/, which the Tauri bundle ships as the app's "engine" resource.
 
-from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 hiddenimports = [
     *collect_submodules("keyring.backends"),  # found through entry points at runtime
     *collect_submodules("uvicorn"),           # loop/protocol implementations loaded by name
     *collect_submodules("alembic"),
     "sqlalchemy.dialects.sqlite",
+    *collect_submodules("streamlink.plugins"),  # Twitch and Kick plugins, loaded by name
 ]
 
 a = Analysis(
@@ -22,6 +23,9 @@ a = Analysis(
         ("engine/db/migrations/env.py", "engine/db/migrations"),
         ("engine/db/migrations/versions/*.py", "engine/db/migrations/versions"),
         *copy_metadata("keyring"),
+        *copy_metadata("streamlink"),
+        *collect_data_files("streamlink"),
+        *collect_data_files("imageio_ffmpeg"),  # the bundled ffmpeg binary
     ],
     hiddenimports=hiddenimports,
     excludes=["tkinter", "pytest"],

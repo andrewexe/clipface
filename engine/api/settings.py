@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, ValidationError
 
 from engine.api.app import AppContext, get_ctx
 from engine.db.audit import write_audit
@@ -87,3 +87,29 @@ def delete_secret(name: str, ctx: AppContext = Depends(get_ctx)) -> dict:
             write_audit(session, actor="user", action="secret.delete", object_id=name)
         log.info("secret %s removed from the OS keychain", name)
     return {"name": name, "is_set": False}
+
+
+@router.get("/app")
+def get_app_settings(ctx: AppContext = Depends(get_ctx)) -> dict:
+    return ctx.settings.get().model_dump()
+
+
+@router.patch("/app")
+def update_app_settings(patch: dict, ctx: AppContext = Depends(get_ctx)) -> dict:
+    known = set(type(ctx.settings.get()).model_fields)
+    unknown = sorted(set(patch) - known)
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"unknown setting: {unknown[0]}")
+    try:
+        settings, changes = ctx.settings.update(patch)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        field = ".".join(str(part) for part in first["loc"])
+        raise HTTPException(status_code=422, detail=f"{field}: {first['msg']}") from None
+    if changes:
+        with ctx.session_factory.begin() as session:
+            write_audit(session, actor="user", action="settings.update", details=changes)
+        for service in (ctx.monitor, ctx.recorder):
+            if service is not None:
+                service.wake()
+    return settings.model_dump()

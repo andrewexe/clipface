@@ -22,6 +22,8 @@ from engine.config import Config
 from engine.db.session import current_revision, make_session_factory
 from engine.keychain import SecretStore
 from engine.monitor.service import Monitor
+from engine.recorder.service import Recorder
+from engine.settings import SettingsStore
 
 # The Tauri webview (Windows, then macOS/Linux) and the Vite dev server.
 ALLOWED_ORIGINS = [
@@ -39,6 +41,8 @@ class AppContext:
     db_engine: Engine
     secrets: SecretStore
     monitor: Monitor | None = None
+    recorder: Recorder | None = None
+    settings: SettingsStore = field(init=False)
     session_factory: sessionmaker[Session] = field(init=False)
     # Read once: the schema only changes at startup, and health is polled constantly.
     schema_revision: str | None = field(init=False)
@@ -47,6 +51,7 @@ class AppContext:
     def __post_init__(self) -> None:
         self.session_factory = make_session_factory(self.db_engine)
         self.schema_revision = current_revision(self.db_engine)
+        self.settings = SettingsStore(self.config.settings_file)
 
 
 def get_ctx(request: Request) -> AppContext:
@@ -70,7 +75,7 @@ def create_app(ctx: AppContext) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         # Background services run inside the server's event loop for its whole life.
-        services = [svc for svc in (ctx.monitor,) if svc is not None]
+        services = [svc for svc in (ctx.monitor, ctx.recorder) if svc is not None]
         tasks = [asyncio.create_task(svc.run()) for svc in services]
         try:
             yield

@@ -22,6 +22,30 @@ function since(iso: string): string {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
+function size(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  return `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
+function RecordingNote({ streamer }: { streamer: Streamer }) {
+  const rec = streamer.session?.recording;
+  if (!streamer.session) return null;
+  if (!rec) return <div className="muted small">Starting to record…</div>;
+  if (rec.recording) {
+    return (
+      <div className="muted small">
+        <span className="rec-dot" /> Recording · last {Math.round(rec.buffered_seconds / 60)} min
+        kept ({size(rec.bytes)})
+      </div>
+    );
+  }
+  return (
+    <div className="error small">
+      Not recording: {rec.error ?? "waiting to retry"}. Retrying automatically.
+    </div>
+  );
+}
+
 function StatePill({ streamer }: { streamer: Streamer }) {
   switch (streamer.state) {
     case "live":
@@ -108,6 +132,7 @@ function StreamerRow({ streamer, onChanged }: { streamer: Streamer; onChanged: (
             streamer.url
           )}
         </div>
+        <RecordingNote streamer={streamer} />
         {error && (
           <div className="error small" role="alert">
             {error}
@@ -253,7 +278,12 @@ export function Streamers() {
         </div>
       )}
       {data?.poll_interval_s && data.streamers.length > 0 && (
-        <p className="muted small">Live status is checked every {data.poll_interval_s} seconds.</p>
+        <p className="muted small">
+          Live status is checked every {data.poll_interval_s} seconds.
+          {data.recorder
+            ? ` Recordings use ${size(data.recorder.total_bytes)} of the ${size(data.recorder.cap_bytes)} disk limit.`
+            : ""}
+        </p>
       )}
     </section>
   );

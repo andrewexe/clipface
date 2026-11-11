@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, type Keychain, type SecretInfo } from "../api";
+import { api, type AppSettings, type Keychain, type SecretInfo } from "../api";
 
 function SecretRow({ secret, onChanged }: { secret: SecretInfo; onChanged: () => void }) {
   const [value, setValue] = useState("");
@@ -68,6 +68,124 @@ function SecretRow({ secret, onChanged }: { secret: SecretInfo; onChanged: () =>
   );
 }
 
+type NumberField = {
+  key: keyof AppSettings & string;
+  label: string;
+  unit: string;
+  help: string;
+  min: number;
+  max: number;
+  step?: number;
+};
+
+const RECORDING_FIELDS: NumberField[] = [
+  {
+    key: "buffer_minutes",
+    label: "Rolling buffer",
+    unit: "minutes",
+    help: "How much of each live stream is kept so a moment can be cut after it happens.",
+    min: 2,
+    max: 120,
+  },
+  {
+    key: "disk_cap_gb",
+    label: "Disk limit",
+    unit: "GB",
+    help: "Total space for stream recordings. The oldest footage is deleted first.",
+    min: 1,
+    max: 4000,
+  },
+  {
+    key: "raw_retention_hours",
+    label: "Keep raw footage",
+    unit: "hours",
+    help: "Recordings are deleted this long after a stream ends, unless a clip uses them.",
+    min: 0.5,
+    max: 72,
+    step: 0.5,
+  },
+];
+
+export function NumberSettings({ title, fields }: { title: string; fields: NumberField[] }) {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api
+      .appSettings()
+      .then(setSettings)
+      .catch((err: Error) => setError(err.message));
+  }, []);
+
+  if (!settings) {
+    return error ? (
+      <div className="banner banner-bad" role="alert">
+        Could not load settings: {error}
+      </div>
+    ) : null;
+  }
+
+  const changed = fields.filter(
+    (f) => draft[f.key] !== undefined && Number(draft[f.key]) !== settings[f.key],
+  );
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setSaved(false);
+    try {
+      const patch = Object.fromEntries(changed.map((f) => [f.key, Number(draft[f.key])]));
+      setSettings(await api.updateAppSettings(patch));
+      setDraft({});
+      setSaved(true);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  return (
+    <form className="card" onSubmit={save}>
+      <h3>{title}</h3>
+      {fields.map((field) => (
+        <div className="number-row" key={field.key}>
+          <div>
+            <label htmlFor={field.key}>{field.label}</label>
+            <p className="muted small">{field.help}</p>
+          </div>
+          <div className="number-input">
+            <input
+              id={field.key}
+              type="number"
+              min={field.min}
+              max={field.max}
+              step={field.step ?? 1}
+              value={draft[field.key] ?? String(settings[field.key])}
+              onChange={(event) => {
+                setSaved(false);
+                setDraft({ ...draft, [field.key]: event.target.value });
+              }}
+            />
+            <span className="muted small">{field.unit}</span>
+          </div>
+        </div>
+      ))}
+      <div className="form-foot">
+        <button type="submit" className="btn btn-primary" disabled={changed.length === 0}>
+          Save
+        </button>
+        {saved && <span className="muted small">Saved.</span>}
+        {error && (
+          <span className="error small" role="alert">
+            {error}
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
 export function Settings() {
   const [secrets, setSecrets] = useState<SecretInfo[] | null>(null);
   const [keychain, setKeychain] = useState<Keychain | null>(null);
@@ -96,6 +214,8 @@ export function Settings() {
   return (
     <section>
       <h1>Settings</h1>
+      <h2>Recording</h2>
+      <NumberSettings title="Stream buffer" fields={RECORDING_FIELDS} />
       <h2>API keys</h2>
       <p className="muted">
         Keys are saved to your operating system's keychain

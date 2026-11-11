@@ -27,6 +27,22 @@ class Config:
     def log_file(self) -> Path:
         return self.log_dir / "engine.log"
 
+    @property
+    def settings_file(self) -> Path:
+        return self.data_dir / "settings.json"
+
+    @property
+    def buffer_dir(self) -> Path:
+        return self.data_dir / "buffer"
+
+    @property
+    def raw_dir(self) -> Path:
+        return self.data_dir / "raw"
+
+    @property
+    def clips_dir(self) -> Path:
+        return self.data_dir / "clips"
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)

@@ -29,6 +29,8 @@ from engine.keychain import KeychainUnavailable, SecretStore
 from engine.logging_setup import SecretRedactor, setup_logging
 from engine.monitor.platforms import Credentials, KickClient, TwitchClient
 from engine.monitor.service import Monitor
+from engine.recorder.service import Recorder
+from engine.recorder.store import SegmentStore
 
 log = logging.getLogger("engine")
 
@@ -111,6 +113,12 @@ def main(argv: list[str] | None = None) -> int:
             "kick": KickClient(_credentials(secrets, "kick_client_id", "kick_client_secret")),
         },
     )
+    ctx.recorder = Recorder(
+        ctx.session_factory,
+        SegmentStore(config.buffer_dir, ctx.settings.get().segment_seconds),
+        ctx.settings,
+    )
+    ctx.monitor.add_listener(ctx.recorder.on_session_event)
     app = create_app(ctx)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

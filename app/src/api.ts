@@ -128,16 +128,35 @@ export type Streamer = {
     title: string | null;
     game: string | null;
     viewer_count: number | null;
+    recording: {
+      recording: boolean;
+      buffered_seconds: number;
+      bytes: number;
+      error: string | null;
+    } | null;
   } | null;
+};
+
+export type AppSettings = {
+  buffer_minutes: number;
+  segment_seconds: number;
+  disk_cap_gb: number;
+  raw_retention_hours: number;
+  stream_quality: string;
+  [key: string]: number | string | boolean;
 };
 
 export type StreamersResponse = {
   streamers: Streamer[];
   platforms: Record<string, PlatformStatus>;
+  recorder: { total_bytes: number; cap_bytes: number; recording_sessions: number[] } | null;
   poll_interval_s: number | null;
 };
 
 export const api = {
+  appSettings: () => request<AppSettings>("GET", "/settings/app"),
+  updateAppSettings: (patch: Partial<AppSettings>) =>
+    request<AppSettings>("PATCH", "/settings/app", patch),
   streamers: () => request<StreamersResponse>("GET", "/streamers"),
   addStreamer: (url: string) => request<Streamer>("POST", "/streamers", { url }),
   updateStreamer: (
