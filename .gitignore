@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+node_modules/
+app/dist/
+app/src-tauri/target/
+app/src-tauri/gen/
+*.db
+*.db-wal
+*.db-shm
+*.log
+.env
+.env.*

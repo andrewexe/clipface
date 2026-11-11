@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "../../dist/clipper-engine/": "engine/"
+    }
+  }
+}
