@@ -152,6 +152,12 @@ function Detail({
               <dd>None: {clip.meta.captions_note}.</dd>
             </>
           )}
+          {typeof clip.meta.scoring_note === "string" && (
+            <>
+              <dt>Score</dt>
+              <dd>Not scored: {clip.meta.scoring_note}.</dd>
+            </>
+          )}
           {clip.meta.exported_path && (
             <>
               <dt>Exported</dt>

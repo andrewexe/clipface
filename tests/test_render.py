@@ -444,3 +444,36 @@ def test_rerender_uses_the_new_layout_and_keeps_captions(rig):
     shutil.rmtree(rig.config.raw_dir / f"moment_{moment_id}")
     with pytest.raises(RenderError, match="raw footage"):
         rig.pipeline.rerender(clip_id)
+
+
+def test_claude_scorer_in_the_pipeline_low_score_never_renders(rig):
+    """Phase 6 check, end to end: a low score drops the moment before rendering, and a
+    reply that stays malformed sends the clip to review unscored instead of crashing."""
+    from engine.scorer.claude import ClaudeScorer
+    from tests.test_scorer import FakeClient, decision, reply
+
+    client = FakeClient(reply(decision(score=0.15)))
+    rig.pipeline.scorer = ClaudeScorer(
+        lambda: "sk-ant-test",
+        rig.settings,
+        SpendLedger(rig.factory),
+        client_factory=lambda k: client,
+    )
+    low = add_moment(rig, peak=NOW - 15)
+    assert rig.pipeline.process(low) == "rejected"
+    moment = get(rig, Moment, low)
+    assert moment.signal_scores["claude_score"] == 0.15
+    assert "below the minimum" in moment.signal_scores["rejected"]
+    assert not list(rig.config.clips_dir.glob("*.mp4"))  # nothing was rendered
+
+    client.outcomes = [reply(decision(score=9)), reply(None)]
+    rig.pipeline._store = SegmentStore(rig.config.data_dir / "later")
+    make_buffer(rig.pipeline._store, 1, seconds=60, end_time=NOW + 900, source="mandelbrot")
+    rig.clock[0] = NOW + 905
+    odd = add_moment(rig, peak=NOW + 900 - 15)
+    assert rig.pipeline.process(odd) == "clipped"
+    with rig.factory() as db:
+        clip = db.scalars(select(Clip)).one()
+    assert clip.claude_score is None
+    assert "could not be used" in clip.meta["scoring_note"]
+    assert get(rig, Moment, odd).status == "clipped"

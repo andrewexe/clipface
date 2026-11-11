@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.0 - Phase 6: Claude scoring (2026-11-11)
+
+### Added
+
+- Each moment's transcript and signal scores are sent to Claude (Anthropic Python SDK,
+  structured output) before rendering. The reply gives a score from 0 to 1, the cut
+  inside the window, a title, a caption and short reasons.
+- Moments scored below the minimum (default 0.4, a setting) are dropped before
+  rendering. The score and reasons are shown on each clip in the queue.
+- The transcript, stream title and game are sent as marked untrusted data, and the reply
+  is range-checked and cleaned (single line, no links, length limits) before use. Claude
+  returns data only; nothing in a reply can trigger an action.
+- An unusable reply (out-of-range score, cut outside the window, cut off, declined) is
+  retried once. If it is still unusable, or there is no key, the API is down, or the
+  daily budget is spent, the clip goes to the review queue unscored with the reason.
+- Daily Anthropic spend cap (default $5, a setting), counted from each reply's token
+  usage. Settings page: clip window, minimum score, and both daily spending limits.
+
+### Differs from PLAN.md
+
+- A reply that stays malformed does not discard the moment. The reply is rejected and
+  the clip is reviewed by a person, unscored. An unscored clip can never be
+  auto-approved.
+- The model is `claude-opus-5-5` (setting `scoring_model` in `settings.json`).
+
 ## 0.6.0 - Phase 5: Review queue (MVP complete) (2026-11-11)
 
 ### Added

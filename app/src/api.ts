@@ -216,6 +216,10 @@ export type AppSettings = {
   clip_after_s: number;
   captions: boolean;
   transcription_daily_cap_usd: number;
+  scoring: boolean;
+  scoring_model: string;
+  score_min: number;
+  anthropic_daily_cap_usd: number;
   export_dir: string;
   [key: string]: number | string | boolean;
 };

@@ -143,6 +143,55 @@ const DETECTION_FIELDS: NumberField[] = [
   },
 ];
 
+const CLIP_FIELDS: NumberField[] = [
+  {
+    key: "clip_before_s",
+    label: "Before the moment",
+    unit: "seconds",
+    help: "How much footage before the peak goes into the clip window.",
+    min: 5,
+    max: 120,
+  },
+  {
+    key: "clip_after_s",
+    label: "After the moment",
+    unit: "seconds",
+    help: "How much footage after the peak goes into the clip window.",
+    min: 2,
+    max: 60,
+  },
+  {
+    key: "score_min",
+    label: "Minimum score",
+    unit: "0 to 1",
+    help: "Moments Claude scores below this are dropped before rendering.",
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+];
+
+const SPEND_FIELDS: NumberField[] = [
+  {
+    key: "anthropic_daily_cap_usd",
+    label: "Anthropic daily limit",
+    unit: "USD",
+    help: "Scoring stops for the day at this spend; clips then go to review unscored. Also set a monthly limit in the Anthropic console.",
+    min: 0,
+    max: 1000,
+    step: 0.5,
+  },
+  {
+    key: "transcription_daily_cap_usd",
+    label: "Transcription daily limit",
+    unit: "USD",
+    help: "Captions stop for the day at this spend; clips then render without captions.",
+    min: 0,
+    max: 1000,
+    step: 0.5,
+  },
+];
+
 export function NumberSettings({ title, fields }: { title: string; fields: NumberField[] }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -255,6 +304,9 @@ export function Settings() {
       <NumberSettings title="Stream buffer" fields={RECORDING_FIELDS} />
       <h2>Highlight detection</h2>
       <NumberSettings title="When is it a moment?" fields={DETECTION_FIELDS} />
+      <h2>Clips and spending</h2>
+      <NumberSettings title="Clip window and scoring" fields={CLIP_FIELDS} />
+      <NumberSettings title="Daily spending limits" fields={SPEND_FIELDS} />
       <h2>API keys</h2>
       <p className="muted">
         Keys are saved to your operating system's keychain

@@ -33,6 +33,7 @@ from engine.monitor.service import Monitor
 from engine.recorder.service import Recorder
 from engine.recorder.store import SegmentStore
 from engine.render.pipeline import ClipPipeline
+from engine.scorer.claude import ClaudeScorer
 from engine.scorer.transcribe import DeepgramTranscriber
 from engine.signals.service import SignalService
 
@@ -127,13 +128,15 @@ def main(argv: list[str] | None = None) -> int:
     ctx.signals = SignalService(
         ctx.session_factory, ctx.settings, store, monitor=ctx.monitor, clips=twitch
     )
+    ledger = SpendLedger(ctx.session_factory)
     ctx.pipeline = ClipPipeline(
         ctx.session_factory,
         config,
         ctx.settings,
         store,
-        SpendLedger(ctx.session_factory),
+        ledger,
         transcriber=DeepgramTranscriber(_secret(secrets, "transcription_api_key")),
+        scorer=ClaudeScorer(_secret(secrets, "anthropic_api_key"), ctx.settings, ledger),
         is_recording=ctx.recorder.is_recording,
     )
     ctx.signals.add_listener(ctx.pipeline.on_moment)

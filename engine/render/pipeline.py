@@ -73,6 +73,7 @@ class Draft:
     score: float | None = None
     reasons: list[str] = field(default_factory=list)
     reject: str | None = None  # set to drop the moment before rendering
+    notes: dict[str, str] = field(default_factory=dict)  # e.g. why it was not scored
 
 
 class Scorer(Protocol):
@@ -219,8 +220,9 @@ class ClipPipeline:
             **draft_base,
         )
         if self.scorer is not None:
-            self._mark(moment_id, "scored")
             self.scorer.score(draft)
+            if draft.score is not None:
+                self._mark(moment_id, "scored")
             if draft.reject:
                 return self._reject(moment_id, draft.reject, score=draft.score)
 
@@ -272,6 +274,7 @@ class ClipPipeline:
                 # Loudness of the whole window, second by second: with the frame hashes,
                 # this is how a later clip of the same footage is recognised.
                 "loudness": loudness,
+                **({"scoring_note": draft.notes["scoring"]} if "scoring" in draft.notes else {}),
             },
         )
         for listener in self._listeners:

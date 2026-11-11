@@ -37,6 +37,12 @@ class AppSettings(BaseModel):
     transcription_usd_per_minute: float = Field(0.01, ge=0, le=1)
     transcription_daily_cap_usd: float = Field(2.0, ge=0, le=1000)
 
+    # Claude scoring
+    scoring: bool = True
+    scoring_model: str = Field("claude-opus-5-5", pattern=r"^claude-[a-z0-9-]{3,60}$")
+    score_min: float = Field(0.4, ge=0, le=1)  # moments scored below this are not rendered
+    anthropic_daily_cap_usd: float = Field(5.0, ge=0, le=1000)
+
     # Review and export
     export_dir: str = Field("", max_length=500)  # empty: the default folder in Videos
 
