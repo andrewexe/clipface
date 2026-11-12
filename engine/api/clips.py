@@ -173,7 +173,9 @@ def edit_clip(clip_id: int, body: ClipPatch, ctx: AppContext = Depends(get_ctx))
 _ACTIONS = {"approved": "clip.approve", "rejected": "clip.reject", "pending": "clip.restore"}
 
 
-def _set_status(ctx: AppContext, clip_id: int, new: str, allowed_from: tuple[str, ...]) -> dict:
+def _set_status(
+    ctx: AppContext, clip_id: int, new: str, allowed_from: tuple[str, ...], via: str | None = None
+) -> dict:
     with ctx.session_factory.begin() as db:
         clip, moment, streamer = _row(db, clip_id)
         if clip.status == new:
@@ -187,7 +189,7 @@ def _set_status(ctx: AppContext, clip_id: int, new: str, allowed_from: tuple[str
             actor="user",
             action=_ACTIONS[new],
             object_id=f"clip:{clip.id}",
-            details={"from": clip.status},
+            details={"from": clip.status, **({"via": via} if via else {})},
         )
         clip.status = new
         clip.meta = {**(clip.meta or {}), "reviewed_at": utcnow().isoformat()}

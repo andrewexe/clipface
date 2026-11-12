@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type AppSettings, type Control } from "../api";
+import { api, type AppSettings, type Control, type TelegramStatus } from "../api";
 
 /** Autonomy level, music handling and your own blocked words. */
 export function SafetySettings() {
@@ -174,5 +174,118 @@ export function KillSwitch() {
     >
       {paused ? "Publishing paused. Resume" : "Pause all publishing"}
     </button>
+  );
+}
+
+/** Pairing a phone through Telegram, for approvals and the kill switch on the go. */
+export function PhoneApprovals() {
+  const [status, setStatus] = useState<TelegramStatus | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setStatus(await api.telegram());
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 4000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  if (!status) {
+    return error ? (
+      <div className="banner banner-bad" role="alert">
+        {error}
+      </div>
+    ) : null;
+  }
+
+  const act = async (action: () => Promise<unknown>, done: string) => {
+    setNote(null);
+    setError(null);
+    try {
+      await action();
+      await load();
+      setNote(done);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const bot = status.bot_username ? `@${status.bot_username}` : "your bot";
+  return (
+    <div className="card">
+      <h3>Approve from your phone</h3>
+      {(status.state === "no_token" || status.state === "off") && (
+        <p className="muted">
+          Create a bot by messaging @BotFather in Telegram, then paste its token under API keys
+          below, in the "Phone approvals" group.
+        </p>
+      )}
+      {status.state === "bad_token" && (
+        <p className="error">Telegram rejected the bot token. Check it under API keys below.</p>
+      )}
+      {status.state === "error" && (
+        <p className="muted">Telegram can't be reached right now. Retrying automatically.</p>
+      )}
+      {status.state === "waiting_to_pair" && status.pairing_code && (
+        <>
+          <p>
+            In Telegram, open a chat with {bot} and send this message. It pairs that phone with
+            this app, and only that phone.
+          </p>
+          <p>
+            <code className="pair-code">/start {status.pairing_code}</code>
+          </p>
+        </>
+      )}
+      {status.paired && (
+        <>
+          <p>
+            A phone is paired. Clips that need your review are sent to it with Approve and Reject
+            buttons, and it can send /pause, /resume and /status.
+          </p>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={status.notify}
+              onChange={(event) =>
+                void act(
+                  () => api.updateAppSettings({ telegram_notify: event.target.checked }),
+                  "Saved.",
+                )
+              }
+            />
+            Send clips to my phone
+          </label>
+          <div className="form-foot">
+            <button
+              className="btn"
+              onClick={() => void act(() => api.telegramAction("test"), "Test message sent.")}
+            >
+              Send a test message
+            </button>
+            <button
+              className="btn"
+              onClick={() => void act(() => api.telegramAction("unpair"), "Phone unpaired.")}
+            >
+              Unpair
+            </button>
+            {note && <span className="muted small">{note}</span>}
+          </div>
+        </>
+      )}
+      {error && (
+        <p className="error small" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

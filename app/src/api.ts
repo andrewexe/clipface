@@ -169,6 +169,14 @@ export type Control = {
   l3: { eligible: boolean; reason: string };
 };
 
+export type TelegramStatus = {
+  state: "off" | "no_token" | "bad_token" | "waiting_to_pair" | "ready" | "error";
+  bot_username: string | null;
+  paired: boolean;
+  pairing_code: string | null;
+  notify: boolean;
+};
+
 export type StopResult = {
   dropped: number;
   removed: number;
@@ -279,6 +287,7 @@ export type AppSettings = {
   music_action: "review" | "reject";
   blocked_words: string[];
   youtube_privacy: "private" | "unlisted" | "public";
+  telegram_notify: boolean;
   export_dir: string;
   [key: string]: number | string | boolean | string[];
 };
@@ -291,6 +300,9 @@ export type StreamersResponse = {
 };
 
 export const api = {
+  telegram: () => request<TelegramStatus>("GET", "/control/telegram"),
+  telegramAction: (action: "unpair" | "test") =>
+    request<TelegramStatus>("POST", `/control/telegram/${action}`),
   accounts: () => request<AccountsResponse>("GET", "/accounts"),
   connectYouTube: () =>
     request<{ auth_url: string; browser_opened: boolean }>("POST", "/accounts/youtube/connect"),

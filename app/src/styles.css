@@ -706,3 +706,17 @@ kbd {
 .full-row .secret-controls {
   flex-wrap: wrap;
 }
+.pair-code {
+  font-size: 16px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  user-select: all;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}

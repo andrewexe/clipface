@@ -24,7 +24,9 @@ import uvicorn
 from engine import __version__
 from engine.api.app import AppContext, create_app
 from engine.config import load_config
+from engine.control.bot_actions import EngineBotActions
 from engine.control.spend import SpendLedger
+from engine.control.telegram import TelegramBot
 from engine.db.models import utcnow
 from engine.db.session import create_db_engine, run_migrations
 from engine.keychain import KeychainUnavailable, SecretStore
@@ -160,6 +162,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     ctx.gate.on_approved(ctx.publisher.schedule_clip)
     ctx.remove_published = ctx.publisher.remove_clip
+    ctx.telegram = TelegramBot(
+        _secret(secrets, "telegram_bot_token"), ctx.settings, EngineBotActions(ctx)
+    )
+    ctx.gate.on_needs_review(ctx.telegram.notify_clip)
+    ctx.publisher.on_alert(ctx.telegram.alert)
     app = create_app(ctx)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

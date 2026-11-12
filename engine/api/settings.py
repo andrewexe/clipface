@@ -89,6 +89,15 @@ def delete_secret(name: str, ctx: AppContext = Depends(get_ctx)) -> dict:
     return {"name": name, "is_set": False}
 
 
+# Changed only through /control, where each change is checked and audited on its own terms.
+_HAS_ITS_OWN_CONTROL = {
+    "autonomy_level",
+    "autonomy_l2_since",
+    "publishing_paused",
+    "telegram_chat_id",
+}
+
+
 @router.get("/app")
 def get_app_settings(ctx: AppContext = Depends(get_ctx)) -> dict:
     return ctx.settings.get().model_dump()
@@ -100,6 +109,11 @@ def update_app_settings(patch: dict, ctx: AppContext = Depends(get_ctx)) -> dict
     unknown = sorted(set(patch) - known)
     if unknown:
         raise HTTPException(status_code=422, detail=f"unknown setting: {unknown[0]}")
+    guarded = sorted(set(patch) & _HAS_ITS_OWN_CONTROL)
+    if guarded:
+        raise HTTPException(
+            status_code=422, detail=f"{guarded[0]} is changed through its own control, not here"
+        )
     try:
         settings, changes = ctx.settings.update(patch)
     except ValidationError as exc:

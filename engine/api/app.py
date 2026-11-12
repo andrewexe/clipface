@@ -19,6 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from engine import __version__
 from engine.config import Config
+from engine.control.telegram import TelegramBot
 from engine.db.session import current_revision, make_session_factory
 from engine.keychain import SecretStore
 from engine.monitor.service import Monitor
@@ -51,6 +52,7 @@ class AppContext:
     pipeline: ClipPipeline | None = None
     gate: PolicyGate | None = None
     publisher: Publisher | None = None
+    telegram: TelegramBot | None = None
     oauth_flow: OAuthListener | None = None
     open_browser: bool = True  # tests turn this off
     # Deletes a published clip's posts from the platforms; set by the publisher.
@@ -68,7 +70,14 @@ class AppContext:
 
     def services(self) -> list:
         """Background services, in start order."""
-        return [self.monitor, self.recorder, self.signals, self.pipeline, self.publisher]
+        return [
+            self.monitor,
+            self.recorder,
+            self.signals,
+            self.pipeline,
+            self.publisher,
+            self.telegram,
+        ]
 
 
 def get_ctx(request: Request) -> AppContext:

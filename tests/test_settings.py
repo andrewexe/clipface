@@ -47,3 +47,13 @@ def test_api_get_patch_validate_audit(harness):
     entries = harness.client.get("/audit", headers=harness.auth).json()["entries"]
     assert [e["action"] for e in entries] == ["settings.update"]
     assert entries[0]["details"] == {"disk_cap_gb": {"from": 50.0, "to": 120.0}}
+
+
+def test_safety_switches_cannot_be_changed_through_general_settings(harness):
+    for patch in ({"autonomy_level": "L2"}, {"publishing_paused": True},
+                  {"telegram_chat_id": 12345}, {"autonomy_l2_since": "2020-01-01T00:00:00+00:00"}):  # fmt: skip
+        response = harness.client.patch("/settings/app", json=patch, headers=harness.auth)
+        assert response.status_code == 422 and "its own control" in response.json()["detail"]
+    settings = harness.ctx.settings.get()
+    assert settings.autonomy_level == "L1" and settings.telegram_chat_id == 0
+    assert settings.publishing_paused is False

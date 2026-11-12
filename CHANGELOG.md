@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.0 - Phase 9: Phone approvals (2026-11-12)
+
+### Added
+
+- Telegram bot (official Bot API, long polling). Each clip that needs your review is
+  sent to your phone as a video with its title, score and safety findings, and Approve
+  and Reject buttons. Approving schedules the post exactly as approving in the app does.
+- `/pause` and `/resume` are the kill switch from your phone; `/status` shows the queue.
+  Alerts (a strike, an expired sign-in) are forwarded.
+- Pairing: the app shows a one-time code; sending `/start <code>` to the bot from a
+  private chat pairs that phone. The bot obeys that one chat only. Messages and button
+  presses from anyone else, or in a group, do nothing and get no reply.
+- The bot can approve or reject a pending clip, pause, resume and report status. It
+  cannot change settings, read keys, or reverse an earlier decision.
+- Settings page: phone pairing, a test message, unpair, and a switch for clip messages.
+- Autonomy level, the kill switch and phone pairing can no longer be changed through
+  the general settings endpoint, only through their own audited controls.
+
+### Differs from PLAN.md
+
+- Telegram, not Discord: it needs only a bot token and outgoing HTTPS, with no gateway
+  connection to keep alive.
+- Under L1 every clip needs approval, so every clip is sent to the phone, not only
+  flagged ones.
+
 ## 0.9.0 - Phase 8: YouTube publisher (2026-11-12)
 
 ### Added

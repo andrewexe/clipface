@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, type AppSettings, type Keychain, type SecretInfo } from "../api";
-import { SafetySettings } from "./Safety";
+import { PhoneApprovals, SafetySettings } from "./Safety";
 
 function SecretRow({ secret, onChanged }: { secret: SecretInfo; onChanged: () => void }) {
   const [value, setValue] = useState("");
@@ -325,6 +325,7 @@ export function Settings() {
       <h2>Safety</h2>
       <SafetySettings />
       <NumberSettings title="Publishing without approval (L2)" fields={AUTONOMY_FIELDS} />
+      <PhoneApprovals />
       <h2>Recording</h2>
       <NumberSettings title="Stream buffer" fields={RECORDING_FIELDS} />
       <h2>Highlight detection</h2>

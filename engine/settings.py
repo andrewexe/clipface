@@ -60,6 +60,10 @@ class AppSettings(BaseModel):
     post_window_start_hour: int = Field(9, ge=0, le=23)
     post_window_end_hour: int = Field(23, ge=1, le=24)
 
+    # Phone approvals
+    telegram_chat_id: int = 0  # the one private chat the bot obeys; 0 means not paired
+    telegram_notify: bool = True
+
     # Review and export
     export_dir: str = Field("", max_length=500)  # empty: the default folder in Videos
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from engine.api.app import AppContext, get_ctx
+from engine.control.bot_actions import set_publishing_paused
 from engine.db.audit import write_audit
 from engine.db.models import AuditLog, utcnow
 
@@ -69,18 +70,45 @@ def get_control(ctx: AppContext = Depends(get_ctx)) -> dict:
 @router.post("/kill-switch")
 def kill_switch(body: KillSwitchIn, ctx: AppContext = Depends(get_ctx)) -> dict:
     """Pause (or resume) all publishing at once."""
-    _settings, changes = ctx.settings.update({"publishing_paused": body.paused})
+    set_publishing_paused(ctx, body.paused)
+    return _view(ctx)
+
+
+def _telegram_view(ctx: AppContext) -> dict:
+    bot = ctx.telegram
+    settings = ctx.settings.get()
+    paired = bool(settings.telegram_chat_id)
+    return {
+        "state": bot.state if bot else "off",
+        "bot_username": bot.bot_username if bot else None,
+        "paired": paired,
+        # Shown in the app only; whoever can read it here already controls the app.
+        "pairing_code": None if paired or bot is None else bot.pairing_code,
+        "notify": settings.telegram_notify,
+    }
+
+
+@router.get("/telegram")
+def telegram_status(ctx: AppContext = Depends(get_ctx)) -> dict:
+    return _telegram_view(ctx)
+
+
+@router.post("/telegram/unpair")
+def telegram_unpair(ctx: AppContext = Depends(get_ctx)) -> dict:
+    _settings, changes = ctx.settings.update({"telegram_chat_id": 0})
     if changes:
         with ctx.session_factory.begin() as db:
-            write_audit(
-                db,
-                actor="user",
-                action="publishing.pause" if body.paused else "publishing.resume",
-            )
-        for service in ctx.services():
-            if service is not None:
-                service.wake()
-    return _view(ctx)
+            write_audit(db, actor="user", action="telegram.unpair")
+    return _telegram_view(ctx)
+
+
+@router.post("/telegram/test")
+def telegram_test(ctx: AppContext = Depends(get_ctx)) -> dict:
+    """Send a test message to the paired phone."""
+    if ctx.telegram is None or not ctx.settings.get().telegram_chat_id:
+        raise HTTPException(status_code=409, detail="No phone is paired yet.")
+    ctx.telegram.alert("Test message from Clipper. Phone approvals are working.")
+    return _telegram_view(ctx)
 
 
 @router.post("/autonomy")
