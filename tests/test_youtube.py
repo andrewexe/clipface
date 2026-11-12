@@ -496,3 +496,16 @@ def test_lookup_after_a_lost_session_tolerates_clock_differences_but_not_old_vid
         rig.clock.advance(hours=2)
         rig.publisher.run_due()
     assert rig.fake.upload_count() == 2  # uploaded as its own video, not confused with the old one
+
+
+def test_a_strike_drops_l3_back_to_l2_and_restarts_the_clock(rig):
+    rig.settings.update({"autonomy_level": "L3", "autonomy_l2_since": "2026-10-01T00:00:00+00:00"})
+    rig.publisher.register_strike(1, "strike", "community guidelines")
+    settings = rig.settings.get()
+    assert settings.autonomy_level == "L2"
+    assert settings.autonomy_l2_since > "2026-11-01"  # the two weeks start again
+    assert "Autonomy dropped from L3 to L2" in rig.alerts[0]
+    assert rig.audit() == ["account.strike", "autonomy.demote"]
+
+    rig.publisher.register_strike(1, "claim")  # at L2 there is nothing further to drop
+    assert rig.settings.get().autonomy_level == "L2" and rig.audit().count("autonomy.demote") == 1

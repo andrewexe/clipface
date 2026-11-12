@@ -490,3 +490,63 @@ def test_gate_only_acts_on_pending_clips(env):
     env.edit(status="approved")
     assert env.gate.review(1) == "review" and env.clip().policy_result is None
     assert env.gate.review(999) == "review"  # unknown clip: nothing to do, nothing raised
+
+
+# -- L3: publish first, spot-check afterwards ---------------------------------------------------
+
+
+def test_l3_publishes_the_sample_too_and_marks_it_for_a_spot_check(env):
+    env.settings.update({"autonomy_level": "L3"})
+    approved, spot_checks, reviews = [], [], []
+    env.gate.on_approved(approved.append)
+    env.gate.on_spot_check(spot_checks.append)
+    env.gate.on_needs_review(reviews.append)
+
+    env.state.roll = 0.05  # inside the 10% sample
+    assert env.gate.review(1) == "auto_approved"
+    clip = env.clip()
+    assert clip.status == "approved" and clip.meta["spot_check"] == "pending"
+    assert clip.policy_result["sampled"] is True
+    assert "check afterwards" in clip.policy_result["decision"]["why"][0]
+    assert (approved, spot_checks, reviews) == ([1], [1], [])
+
+    env.edit(status="pending", policy_result=None, meta={"duration": 8.0})
+    env.state.roll = 0.5  # outside the sample: published, no spot check
+    assert env.gate.review(1) == "auto_approved"
+    assert "spot_check" not in env.clip().meta and spot_checks == [1]
+
+
+@pytest.mark.parametrize("name", list(BAD_CLIPS))
+def test_l3_holds_back_exactly_what_l2_holds_back(env, name):
+    """L3 changes when you look at clean clips. It must not let anything else through."""
+    env.settings.update({"autonomy_level": "L3"})
+    env.state.roll = 0.05
+    approved = []
+    env.gate.on_approved(approved.append)
+    with env.factory.begin() as db:
+        db.get(Streamer, 1).program_rules = {"banned": ["rival game"]}
+    BAD_CLIPS[name](env)
+    assert env.gate.review(1) in ("rejected", "review"), name
+    assert env.clip().status in ("rejected", "pending") and approved == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda e: e.settings.update({"publishing_paused": True}),
+        lambda e: e.edit(claude_score=0.6),
+        lambda e: e.edit(claude_score=None),
+    ],
+)
+def test_l3_keeps_every_other_condition_of_l2(env, change):
+    env.settings.update({"autonomy_level": "L3"})
+    change(env)
+    assert env.gate.review(1) == "review" and env.clip().status == "pending"
+
+
+@pytest.mark.parametrize("status", ["none", "asked"])
+def test_l3_still_needs_the_streamers_permission(env, status):
+    env.settings.update({"autonomy_level": "L3"})
+    with env.factory.begin() as db:
+        db.get(Streamer, 1).permission_status = status
+    assert env.gate.review(1) == "review"

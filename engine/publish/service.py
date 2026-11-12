@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from engine.control.autonomy import demote_to_l2
 from engine.db.audit import write_audit
 from engine.db.models import (
     Account,
@@ -481,7 +482,11 @@ class Publisher:
                 details={"kind": kind, "note": note},
             )
             handle = account.handle
-        self._alert(f"{handle} is paused: {kind}. {note}".strip())
+        dropped = demote_to_l2(self._settings, self._session_factory, f"{kind} on {handle}")
+        self._alert(
+            f"{handle} is paused: {kind}. {note}".strip()
+            + (" Autonomy dropped from L3 to L2." if dropped else "")
+        )
         return True
 
     def remove_clip(self, clip_id: int) -> bool:

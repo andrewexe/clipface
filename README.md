@@ -123,7 +123,10 @@ These are the plan's acceptance checks that could not be run where the app was b
 - **Kill switch**: "Pause all publishing" at the bottom of the sidebar, or `/pause` from
   your phone.
 - **Autonomy**: L1 (default) needs your approval for every clip. L2 lets clean,
-  high-scoring clips of permitted streamers publish on their own. L3 is locked.
+  high-scoring clips of permitted streamers publish on their own, holding a random one in
+  ten for you first. L3, available after two weeks of L2 with no strikes, publishes those
+  too and shows them to you afterwards as spot checks; a strike or a failed spot check
+  drops it back to L2.
 - **Stop**: on a streamer, when they ask you to stop. Pauses them, withdraws permission,
   drops their clips, cancels scheduled posts, and deletes their YouTube videos. TikTok
   and Instagram posts cannot be deleted by the app; it lists them for you.

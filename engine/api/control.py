@@ -30,8 +30,10 @@ class AutonomyIn(BaseModel):
 
 
 def _l3_status(ctx: AppContext) -> dict:
-    """L3 needs two weeks of L2 with no strikes. This only reports whether that holds."""
+    """Whether L3 may be switched on: two weeks of L2 with no strikes."""
     settings = ctx.settings.get()
+    if settings.autonomy_level == "L3":
+        return {"eligible": True, "reason": "L3 is on."}
     if settings.autonomy_level != "L2" or not settings.autonomy_l2_since:
         return {"eligible": False, "reason": "L2 has to run for two weeks with no strikes first."}
     since = datetime.fromisoformat(settings.autonomy_l2_since)
@@ -115,18 +117,16 @@ def telegram_test(ctx: AppContext = Depends(get_ctx)) -> dict:
 
 @router.post("/autonomy")
 def set_autonomy(body: AutonomyIn, ctx: AppContext = Depends(get_ctx)) -> dict:
-    if body.level == "L3":
+    current = ctx.settings.get().autonomy_level
+    if body.level == "L3" and current != "L3":
         status = _l3_status(ctx)
-        detail = (
-            "L3 is not available. The plan says when it unlocks but not what it changes, "
-            "so it is not built."
-            if status["eligible"]
-            else f"L3 is not available yet. {status['reason']}"
-        )
-        raise HTTPException(status_code=409, detail=detail)
+        if not status["eligible"]:
+            raise HTTPException(
+                status_code=409, detail=f"L3 is not available yet. {status['reason']}"
+            )
     patch = {"autonomy_level": body.level}
-    if body.level == "L2" and ctx.settings.get().autonomy_level != "L2":
-        patch["autonomy_l2_since"] = utcnow().isoformat()
+    if body.level == "L2" and current == "L1":
+        patch["autonomy_l2_since"] = utcnow().isoformat()  # the two weeks start now
     if body.level == "L1":
         patch["autonomy_l2_since"] = ""
     _settings, changes = ctx.settings.update(patch)

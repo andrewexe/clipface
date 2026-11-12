@@ -349,3 +349,71 @@ def test_instagram_connects_with_the_saved_token_and_reports_problems(more_platf
         call(app, "POST", "/accounts/instagram/connect").status_code == 200
     )  # again: same account
     assert len(call(app, "GET", "/accounts").json()["accounts"]) == 1
+
+
+# -- L3 spot checks -------------------------------------------------------------------------------
+
+
+def published_spot_check(app):
+    """One clip that L3 published without review and picked for a spot check."""
+    connect(app)
+    seed_clip(app)
+    app.ctx.settings.update(
+        {"autonomy_level": "L3", "autonomy_l2_since": "2026-10-01T00:00:00+00:00"}
+    )
+    with app.ctx.session_factory.begin() as db:
+        clip = db.get(Clip, 1)
+        clip.status = "approved"
+        clip.meta = {"duration": 30.0, "auto_approved": True, "spot_check": "pending"}
+    app.ctx.publisher.schedule_clip(1)
+    with app.ctx.session_factory.begin() as db:
+        db.get(PublishJob, 1).scheduled_at = utcnow()
+    app.ctx.publisher.run_due()
+    assert app.fake.upload_count() == 1
+
+
+def test_spot_checks_are_listed_and_passing_one_changes_nothing_else(app):
+    published_spot_check(app)
+    assert call(app, "GET", "/clips").json()["spot_checks"] == 1
+    (clip,) = call(app, "GET", "/clips/spot-checks").json()["clips"]
+    assert clip["id"] == 1 and clip["status"] == "published"
+
+    passed = call(app, "POST", "/clips/1/spot-check", json={"ok": True})
+    assert passed.status_code == 200 and passed.json()["meta"]["spot_check"] == "passed"
+    assert call(app, "GET", "/clips/spot-checks").json()["clips"] == []
+    assert app.fake.upload_count() == 1 and app.ctx.settings.get().autonomy_level == "L3"
+    assert (
+        call(app, "POST", "/clips/1/spot-check", json={"ok": False}).status_code == 409
+    )  # answered
+    assert app.client.get("/clips/spot-checks").status_code == 401
+
+
+def test_failing_a_spot_check_takes_the_post_down_and_drops_to_l2(app):
+    published_spot_check(app)
+    failed = call(app, "POST", "/clips/1/spot-check", json={"ok": False}).json()
+    assert failed["status"] == "removed" and failed["taken_down"] is True
+    assert failed["autonomy_dropped"] is True and failed["meta"]["spot_check"] == "failed"
+    assert app.fake.videos == {}  # deleted from YouTube
+    settings = app.ctx.settings.get()
+    assert settings.autonomy_level == "L2" and settings.autonomy_l2_since > "2026-11-01"
+    actions = [e["action"] for e in call(app, "GET", "/audit").json()["entries"]]
+    assert "clip.spot_check" in actions and "autonomy.demote" in actions
+    # The two-week clock has restarted, so L3 is locked again.
+    assert call(app, "POST", "/control/autonomy", json={"level": "L3"}).status_code == 409
+
+
+def test_failing_a_spot_check_before_it_posted_cancels_the_post(app):
+    connect(app)
+    seed_clip(app)
+    app.ctx.settings.update({"autonomy_level": "L3"})
+    with app.ctx.session_factory.begin() as db:
+        clip = db.get(Clip, 1)
+        clip.status = "approved"
+        clip.meta = {"duration": 30.0, "auto_approved": True, "spot_check": "pending"}
+    app.ctx.publisher.schedule_clip(1)
+    failed = call(app, "POST", "/clips/1/spot-check", json={"ok": False}).json()
+    assert failed["status"] == "rejected"
+    with app.ctx.session_factory() as db:
+        assert db.get(PublishJob, 1).status == "cancelled"
+    app.ctx.publisher.run_due()
+    assert app.fake.upload_count() == 0

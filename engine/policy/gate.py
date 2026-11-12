@@ -16,6 +16,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from engine.control.autonomy import AUTONOMOUS
 from engine.db.audit import write_audit
 from engine.db.models import Clip, Moment, Streamer, StreamSession, utcnow
 from engine.policy.classifier import PolicyClassifier
@@ -32,7 +33,7 @@ PERMITTED = ("granted", "program")
 def autonomy_blockers(settings: AppSettings, streamer: Streamer, score: float | None) -> list[str]:
     """Reasons a clean clip may NOT be auto-approved. Empty means it may."""
     reasons = []
-    if settings.autonomy_level != "L2":
+    if settings.autonomy_level not in AUTONOMOUS:
         reasons.append("autonomy is L1: every clip needs your approval")
     if settings.publishing_paused:
         reasons.append("publishing is paused")
@@ -64,6 +65,13 @@ class PolicyGate:
         self._rng = rng
         self._on_approved: list[Callable[[int], None]] = []
         self._on_review: list[Callable[[int], None]] = []
+        self._on_spot_check: list[Callable[[int], None]] = []
+        self._spot_check = False
+
+    def on_spot_check(self, listener: Callable[[int], None]) -> None:
+        """Called with the clip id when (at L3) a clip was published and then picked for
+        you to check afterwards."""
+        self._on_spot_check.append(listener)
 
     def on_approved(self, listener: Callable[[int], None]) -> None:
         """Called with the clip id when the gate approves a clip on its own."""
@@ -76,12 +84,15 @@ class PolicyGate:
     def review(self, clip_id: int) -> str:
         """Check one clip and act on the result. Returns "rejected", "review" or
         "auto_approved". Never raises: a gate that crashes must not let a clip through."""
+        self._spot_check = False
         try:
             action = self._review(clip_id)
         except Exception:
             log.exception("policy gate failed on clip %s", clip_id)
             action = self._record_failure(clip_id)
-        listeners = self._on_approved if action == "auto_approved" else self._on_review
+        listeners = list(self._on_approved if action == "auto_approved" else self._on_review)
+        if action == "auto_approved" and self._spot_check:
+            listeners += self._on_spot_check
         if action != "rejected":
             for listener in listeners:
                 try:
@@ -159,18 +170,33 @@ class PolicyGate:
                 if blockers:
                     action = "review"
                     result["decision"] = {"action": action, "why": blockers}
-                elif self._rng() < settings.review_sample_rate:
+                elif self._rng() >= settings.review_sample_rate:
+                    action = "auto_approved"
+                    clip.status = "approved"
+                    clip.meta = {**(clip.meta or {}), "auto_approved": True}
+                    result["decision"] = {"action": action, "why": []}
+                elif settings.autonomy_level == "L3":
+                    # L3: the sample publishes like the rest and is checked afterwards.
+                    action = "auto_approved"
+                    self._spot_check = True
+                    clip.status = "approved"
+                    clip.meta = {
+                        **(clip.meta or {}),
+                        "auto_approved": True,
+                        "spot_check": "pending",
+                    }
+                    result["sampled"] = True
+                    result["decision"] = {
+                        "action": action,
+                        "why": ["published first; picked at random for you to check afterwards"],
+                    }
+                else:
                     action = "review"
                     result["sampled"] = True
                     result["decision"] = {
                         "action": action,
                         "why": ["picked at random to check the gate's work"],
                     }
-                else:
-                    action = "auto_approved"
-                    clip.status = "approved"
-                    clip.meta = {**(clip.meta or {}), "auto_approved": True}
-                    result["decision"] = {"action": action, "why": []}
                 audit_action = (
                     "clip.auto_approve" if action == "auto_approved" else "clip.policy_pass"
                 )

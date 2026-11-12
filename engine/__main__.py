@@ -4,7 +4,7 @@ The desktop app starts this as a child process and passes the session token in t
 CLIPPER_SESSION_TOKEN environment variable. The engine binds a loopback port, then
 prints one line to stdout so the app knows where to connect:
 
-    CLIPPER_ENGINE_READY {"port": 51234, "version": "0.11.0"}
+    CLIPPER_ENGINE_READY {"port": 51234, "version": "0.12.0"}
 
 On a startup failure it prints `CLIPPER_ENGINE_ERROR <reason>` and exits non-zero.
 """
@@ -188,6 +188,12 @@ def main(argv: list[str] | None = None) -> int:
         _secret(secrets, "telegram_bot_token"), ctx.settings, EngineBotActions(ctx)
     )
     ctx.gate.on_needs_review(ctx.telegram.notify_clip)
+    ctx.gate.on_spot_check(
+        lambda clip_id: ctx.telegram.alert(
+            f"Clip {clip_id} was published without review and picked for a spot check. "
+            "Look at it under Queue, Spot checks."
+        )
+    )
     ctx.publisher.on_alert(ctx.telegram.alert)
     app = create_app(ctx)
 

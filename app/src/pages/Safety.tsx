@@ -82,9 +82,21 @@ export function SafetySettings() {
             you.
           </span>
         </button>
-        <button role="radio" aria-checked={false} className="btn choice" disabled>
-          <strong>L3: locked</strong>
-          <span className="muted small">{control.l3.reason}</span>
+        <button
+          role="radio"
+          aria-checked={control.autonomy_level === "L3"}
+          className={control.autonomy_level === "L3" ? "btn choice active" : "btn choice"}
+          disabled={!control.l3.eligible}
+          onClick={() => void run(() => api.setAutonomy("L3"))}
+        >
+          <strong>
+            {control.l3.eligible ? "L3: nothing clean waits for you" : "L3: locked"}
+          </strong>
+          <span className="muted small">
+            {control.l3.eligible
+              ? "As L2, but the random sample publishes too and you check it afterwards. A strike or a failed spot check drops back to L2."
+              : control.l3.reason}
+          </span>
         </button>
       </div>
 

@@ -45,34 +45,47 @@ def test_kill_switch_pauses_and_resumes(harness):
     assert audit(harness) == ["publishing.pause", "publishing.resume"]
 
 
-def test_autonomy_l1_l2_and_l3_stays_locked(harness):
+def test_l3_unlocks_only_after_two_clean_weeks_of_l2(harness):
+    # Straight from L1: no.
+    refused = call(harness, "POST", "/control/autonomy", json={"level": "L3"})
+    assert refused.status_code == 409 and "two weeks" in refused.json()["detail"]
+
     l2 = call(harness, "POST", "/control/autonomy", json={"level": "L2"}).json()
     assert l2["autonomy_level"] == "L2" and l2["autonomy_l2_since"]
-    assert "more day" in l2["l3"]["reason"]
-
+    assert "more day" in l2["l3"]["reason"] and l2["l3"]["eligible"] is False
     refused = call(harness, "POST", "/control/autonomy", json={"level": "L3"})
     assert refused.status_code == 409 and "not available yet" in refused.json()["detail"]
     assert call(harness, "POST", "/control/autonomy", json={"level": "L9"}).status_code == 422
 
-    # Two weeks in, with a strike since: still locked, and it says why.
+    # Two weeks in, but with a strike since: still locked, and it says why.
     then = (utcnow() - timedelta(days=15)).isoformat()
     harness.ctx.settings.update({"autonomy_l2_since": then})
     with harness.ctx.session_factory.begin() as db:
         write_audit(db, actor="system", action="account.strike", object_id="account:1")
     assert "strike" in call(harness, "GET", "/control").json()["l3"]["reason"]
+    assert call(harness, "POST", "/control/autonomy", json={"level": "L3"}).status_code == 409
 
-    # Two clean weeks: eligible, but L3 is still refused because the plan never defines it.
+    # Two clean weeks: it unlocks.
     with harness.ctx.session_factory.begin() as db:
         for entry in db.scalars(select(AuditLog).where(AuditLog.action == "account.strike")):
             db.delete(entry)
     assert call(harness, "GET", "/control").json()["l3"]["eligible"] is True
-    still = call(harness, "POST", "/control/autonomy", json={"level": "L3"})
-    assert still.status_code == 409 and "not built" in still.json()["detail"]
-    assert harness.ctx.settings.get().autonomy_level == "L2"
+    l3 = call(harness, "POST", "/control/autonomy", json={"level": "L3"})
+    assert l3.status_code == 200 and l3.json()["autonomy_level"] == "L3"
+    assert l3.json()["l3"] == {"eligible": True, "reason": "L3 is on."}
 
+    # Stepping down by hand: L2 keeps its history, L1 clears it.
+    back = call(harness, "POST", "/control/autonomy", json={"level": "L2"}).json()
+    assert back["autonomy_level"] == "L2" and back["autonomy_l2_since"] == then
     l1 = call(harness, "POST", "/control/autonomy", json={"level": "L1"}).json()
     assert l1["autonomy_level"] == "L1" and l1["autonomy_l2_since"] is None
-    assert audit(harness).count("autonomy.set") == 2
+    assert audit(harness).count("autonomy.set") == 4
+
+
+def test_l3_cannot_be_set_through_general_settings(harness):
+    response = call(harness, "PATCH", "/settings/app", json={"autonomy_level": "L3"})
+    assert response.status_code == 422
+    assert harness.ctx.settings.get().autonomy_level == "L1"
 
 
 def seed_streamer_with_clips(harness):

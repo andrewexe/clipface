@@ -164,7 +164,7 @@ export type ProgramRules = { required_tags: string[]; credit_format: string; ban
 
 export type Control = {
   publishing_paused: boolean;
-  autonomy_level: "L1" | "L2";
+  autonomy_level: "L1" | "L2" | "L3";
   autonomy_l2_since: string | null;
   l3: { eligible: boolean; reason: string };
 };
@@ -262,6 +262,7 @@ export type Clip = {
     captions_note?: string | null;
     layout?: string;
     exported_path?: string | null;
+    spot_check?: "pending" | "passed" | "failed";
     reasons?: string[];
     [key: string]: unknown;
   };
@@ -272,6 +273,7 @@ export type Clip = {
 export type ClipsResponse = {
   clips: Clip[];
   counts: Partial<Record<ClipStatus, number>>;
+  spot_checks: number;
   export_dir: string;
 };
 
@@ -339,6 +341,13 @@ export const api = {
   setAutonomy: (level: "L1" | "L2" | "L3") => request<Control>("POST", "/control/autonomy", { level }),
   stopStreamer: (id: number) => request<StopResult>("POST", `/streamers/${id}/stop`),
   clips: (status: ClipStatus) => request<ClipsResponse>("GET", `/clips?status=${status}`),
+  spotChecks: () => request<{ clips: Clip[] }>("GET", "/clips/spot-checks"),
+  answerSpotCheck: (id: number, ok: boolean) =>
+    request<Clip & { taken_down?: boolean; autonomy_dropped?: boolean }>(
+      "POST",
+      `/clips/${id}/spot-check`,
+      { ok },
+    ),
   editClip: (id: number, patch: { title?: string; caption?: string }) =>
     request<Clip>("PATCH", `/clips/${id}`, patch),
   clipAction: (id: number, action: "approve" | "reject" | "restore" | "export" | "rerender") =>

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Clip, type ClipsResponse, type ClipStatus } from "../api";
 import { useBlobUrl } from "../useBlobUrl";
 
+type Tab = ClipStatus | "spot";
+
 const TABS: { status: ClipStatus; label: string }[] = [
   { status: "pending", label: "To review" },
   { status: "approved", label: "Approved" },
@@ -70,11 +72,13 @@ function PolicyPanel({ clip }: { clip: Clip }) {
 function Detail({
   clip,
   exportDir,
+  spotCheck,
   onDone,
   onChanged,
 }: {
   clip: Clip;
   exportDir: string;
+  spotCheck: boolean;
   onDone: (message?: string) => void;
   onChanged: () => void;
 }) {
@@ -103,6 +107,25 @@ function Detail({
         onDone(`Approved, but not exported: ${result.export_error}`);
       } else {
         onDone();
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const answer = async (ok: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.answerSpotCheck(clip.id, ok);
+      if (ok) {
+        onDone();
+      } else if (result.taken_down === false) {
+        onDone("It could not be taken down automatically: remove it on the platform by hand. Autonomy is back at L2.");
+      } else {
+        onDone("Taken down. Autonomy is back at L2.");
       }
     } catch (err) {
       setError((err as Error).message);
@@ -205,6 +228,26 @@ function Detail({
           </p>
         )}
         <div className="detail-actions">
+          {spotCheck && (
+            <>
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => void answer(true)}
+                title="It was right to publish this"
+              >
+                Looks fine
+              </button>
+              <button
+                className="btn btn-danger"
+                disabled={busy}
+                onClick={() => void answer(false)}
+                title="Takes it down where possible and drops autonomy to L2"
+              >
+                Should not be up
+              </button>
+            </>
+          )}
           {clip.status === "pending" && (
             <>
               <button
@@ -220,17 +263,17 @@ function Detail({
               </button>
             </>
           )}
-          {clip.status === "approved" && (
+          {clip.status === "approved" && !spotCheck && (
             <button className="btn" disabled={busy} onClick={() => void act("export")}>
               Export again
             </button>
           )}
-          {(clip.status === "approved" || clip.status === "rejected") && (
+          {(clip.status === "approved" || clip.status === "rejected") && !spotCheck && (
             <button className="btn" disabled={busy} onClick={() => void act("restore")}>
               Back to review
             </button>
           )}
-          {(clip.status === "pending" || clip.status === "approved") && (
+          {(clip.status === "pending" || clip.status === "approved") && !spotCheck && (
             <button
               className="btn"
               disabled={busy}
@@ -247,7 +290,7 @@ function Detail({
 }
 
 export function Queue() {
-  const [tab, setTab] = useState<ClipStatus>("pending");
+  const [tab, setTab] = useState<Tab>("pending");
   const [data, setData] = useState<ClipsResponse | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -255,7 +298,9 @@ export function Queue() {
 
   const load = useCallback(async () => {
     try {
-      setData(await api.clips(tab));
+      const listing = await api.clips(tab === "spot" ? "pending" : tab);
+      if (tab === "spot") listing.clips = (await api.spotChecks()).clips;
+      setData(listing);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -312,6 +357,12 @@ export function Queue() {
             {data?.counts[status] ? <span className="count">{data.counts[status]}</span> : null}
           </button>
         ))}
+        {data && (data.spot_checks > 0 || tab === "spot") && (
+          <button className={tab === "spot" ? "tab active" : "tab"} onClick={() => setTab("spot")}>
+            Spot checks
+            {data.spot_checks ? <span className="count">{data.spot_checks}</span> : null}
+          </button>
+        )}
         {data && <span className="muted small tabs-right">Approved clips go to {data.export_dir}</span>}
       </div>
       {error && (
@@ -333,6 +384,8 @@ export function Queue() {
                 Clips appear here a minute or so after a moment is detected on a live stream.
               </p>
             </>
+          ) : tab === "spot" ? (
+            <p>No spot checks waiting.</p>
           ) : (
             <p>No {tab} clips.</p>
           )}
@@ -362,6 +415,7 @@ export function Queue() {
             key={current.id}
             clip={current}
             exportDir={data?.export_dir ?? ""}
+            spotCheck={tab === "spot"}
             onDone={done}
             onChanged={() => void load()}
           />

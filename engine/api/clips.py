@@ -13,8 +13,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from engine.api.app import AppContext, get_ctx
+from engine.control.autonomy import demote_to_l2
 from engine.db.audit import write_audit
-from engine.db.models import Clip, Moment, Streamer, StreamSession, utcnow
+from engine.db.models import Clip, Moment, PublishJob, Streamer, StreamSession, utcnow
 from engine.monitor.urls import StreamerRef
 from engine.policy.rules import build_description, credit_line
 from engine.publish.export import ExportError, ExportItem, export_clip
@@ -121,7 +122,88 @@ def list_clips(
         ).all()
         counts = dict(db.execute(select(Clip.status, func.count()).group_by(Clip.status)).all())
         clips = [_view(*row) for row in rows]
-    return {"clips": clips, "counts": counts, "export_dir": str(_export_dir(ctx))}
+    return {
+        "clips": clips,
+        "counts": counts,
+        "spot_checks": len(_spot_check_rows(ctx)),
+        "export_dir": str(_export_dir(ctx)),
+    }
+
+
+def _spot_check_rows(ctx: AppContext) -> list[dict]:
+    """Clips that were published without review at L3 and picked for a look afterwards."""
+    with ctx.session_factory() as db:
+        rows = db.execute(
+            select(Clip, Moment, Streamer)
+            .join(Moment, Moment.id == Clip.moment_id)
+            .join(StreamSession, StreamSession.id == Moment.session_id)
+            .join(Streamer, Streamer.id == StreamSession.streamer_id)
+            .where(Clip.status.in_(("approved", "published")))
+            .order_by(Clip.id)
+        ).all()
+        return [_view(*row) for row in rows if (row[0].meta or {}).get("spot_check") == "pending"]
+
+
+class SpotCheckIn(BaseModel):
+    ok: bool
+
+
+@router.get("/clips/spot-checks")
+def list_spot_checks(ctx: AppContext = Depends(get_ctx)) -> dict:
+    return {"clips": _spot_check_rows(ctx)}
+
+
+@router.post("/clips/{clip_id}/spot-check")
+def answer_spot_check(clip_id: int, body: SpotCheckIn, ctx: AppContext = Depends(get_ctx)) -> dict:
+    """Your verdict on a clip that was published before you saw it. "Not ok" takes it
+    down where the platform allows, cancels its waiting posts, and drops autonomy to L2."""
+    with ctx.session_factory() as db:
+        clip, _moment, _streamer = _row(db, clip_id)
+        if (clip.meta or {}).get("spot_check") != "pending":
+            raise HTTPException(
+                status_code=409, detail="This clip is not waiting for a spot check."
+            )
+        was_published = clip.status == "published"
+    taken_down = True
+    if not body.ok and was_published:
+        # Network calls: outside any database transaction.
+        taken_down = bool(ctx.remove_published and ctx.remove_published(clip_id))
+    with ctx.session_factory.begin() as db:
+        clip, moment, streamer = _row(db, clip_id)
+        meta = dict(clip.meta or {})
+        meta["spot_check"] = "passed" if body.ok else "failed"
+        if not body.ok:
+            for job in db.scalars(
+                select(PublishJob).where(
+                    PublishJob.clip_id == clip_id, PublishJob.status.in_(("scheduled", "failed"))
+                )
+            ):
+                job.status = "cancelled"
+            if not was_published:
+                clip.status = "rejected"
+            elif taken_down:
+                clip.status = "removed"
+            else:
+                meta["remove_by_hand"] = True  # still up: the platform cannot delete it for us
+        clip.meta = meta
+        write_audit(
+            db,
+            actor="user",
+            action="clip.spot_check",
+            object_id=f"clip:{clip_id}",
+            details={"ok": body.ok, "taken_down": taken_down if not body.ok else None},
+        )
+        db.flush()
+        view = _view(clip, moment, streamer)
+    if not body.ok:
+        demoted = demote_to_l2(
+            ctx.settings, ctx.session_factory, f"clip {clip_id} failed its spot check"
+        )
+        view["taken_down"] = taken_down
+        view["autonomy_dropped"] = demoted
+        if ctx.publisher is not None:
+            ctx.publisher.wake()
+    return view
 
 
 @router.get("/clips/{clip_id}")

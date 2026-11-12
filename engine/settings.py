@@ -44,7 +44,7 @@ class AppSettings(BaseModel):
     anthropic_daily_cap_usd: float = Field(5.0, ge=0, le=1000)
 
     # Policy gate and autonomy
-    autonomy_level: str = Field("L1", pattern=r"^L[12]$")  # L1: every clip needs approval
+    autonomy_level: str = Field("L1", pattern=r"^L[123]$")  # L1: every clip needs approval
     autonomy_l2_since: str = ""  # when L2 was last switched on (ISO time)
     publishing_paused: bool = False  # the kill switch
     auto_approve_score: float = Field(0.8, ge=0.5, le=1)

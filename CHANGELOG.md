@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.12.0 - Autonomy level L3 (2026-11-12)
+
+The plan said when L3 unlocks but not what it does. This is the definition that was
+built, chosen so that L3 adds autonomy without loosening any safety rule.
+
+### Added
+
+- **L3: nothing clean waits for you.** At L2, one in ten of the clips that would publish
+  on their own is held for your approval first. At L3 those publish too, and appear in a
+  new "Spot checks" tab in the Queue for you to look at afterwards.
+- L3 changes when you look, not what may publish. The content checks, the streamer
+  permission requirement, the score level, the daily caps, the posting window and the
+  kill switch are identical at L2 and L3. Flagged clips still wait for you; blocked
+  clips are still rejected.
+- L3 can be switched on only after two weeks of L2 with no strikes, as the plan requires.
+- L3 is lost automatically, back to L2 with the two weeks starting again, when an account
+  gets a claim, strike or takedown, or when you answer a spot check with "Should not be
+  up". That answer also cancels the clip's waiting posts and takes its posts down where
+  the platform allows (YouTube); for TikTok and Instagram it tells you to remove it by
+  hand.
+- A spot check is announced on the paired phone.
+
 ## 0.11.0 - Phase 10: more platforms, insights, MCP (2026-11-12)
 
 ### Added
