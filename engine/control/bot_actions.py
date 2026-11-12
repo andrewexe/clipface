@@ -12,14 +12,14 @@ from engine.db.audit import write_audit
 from engine.db.models import Clip, PublishJob
 
 
-def set_publishing_paused(ctx, paused: bool, via: str | None = None) -> bool:
+def set_publishing_paused(ctx, paused: bool, via: str | None = None, actor: str = "user") -> bool:
     """The kill switch. Returns whether anything changed."""
     _settings, changes = ctx.settings.update({"publishing_paused": paused})
     if changes:
         with ctx.session_factory.begin() as db:
             write_audit(
                 db,
-                actor="user",
+                actor=actor,
                 action="publishing.pause" if paused else "publishing.resume",
                 details={"via": via} if via else None,
             )

@@ -4,7 +4,7 @@ The desktop app starts this as a child process and passes the session token in t
 CLIPPER_SESSION_TOKEN environment variable. The engine binds a loopback port, then
 prints one line to stdout so the app knows where to connect:
 
-    CLIPPER_ENGINE_READY {"port": 51234, "version": "0.1.0"}
+    CLIPPER_ENGINE_READY {"port": 51234, "version": "0.11.0"}
 
 On a startup failure it prints `CLIPPER_ENGINE_ERROR <reason>` and exits non-zero.
 """
@@ -35,7 +35,9 @@ from engine.monitor.platforms import Credentials, KickClient, TwitchClient
 from engine.monitor.service import Monitor
 from engine.policy.classifier import PolicyClassifier
 from engine.policy.gate import PolicyGate
+from engine.publish.instagram import InstagramClient, InstagramPublisher
 from engine.publish.service import Publisher
+from engine.publish.tiktok import TikTokClient, TikTokPublisher
 from engine.publish.youtube import YouTubeClient, YouTubePublisher
 from engine.recorder.service import Recorder
 from engine.recorder.store import SegmentStore
@@ -101,7 +103,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="shut down when stdin reaches EOF (used by the desktop app)",
     )
+    parser.add_argument(
+        "--mcp", action="store_true", help="run the MCP server (stdio) instead of the engine"
+    )
+    parser.add_argument(
+        "--self-check", action="store_true", help="check that this build is complete, then exit"
+    )
     args = parser.parse_args(argv)
+    if args.self_check:
+        from engine.selfcheck import main as selfcheck_main
+
+        return selfcheck_main()
+    if args.mcp:
+        from engine.mcp_server import main as mcp_main
+
+        return mcp_main()
 
     # Popped so child processes (ffmpeg, streamlink) never inherit it.
     token = os.environ.pop("CLIPPER_SESSION_TOKEN", "")
@@ -154,12 +170,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     ctx.pipeline.add_listener(ctx.gate.review)
     youtube = YouTubeClient(_credentials(secrets, "google_client_id", "google_client_secret"))
+    tiktok = TikTokClient(_credentials(secrets, "tiktok_client_key", "tiktok_client_secret"))
     ctx.publisher = Publisher(
         ctx.session_factory,
         ctx.settings,
         secrets,
-        {"youtube": YouTubePublisher(youtube, utcnow)},
+        {
+            "youtube": YouTubePublisher(youtube, utcnow),
+            "tiktok": TikTokPublisher(tiktok, utcnow),
+            "instagram": InstagramPublisher(InstagramClient(), utcnow),
+        },
     )
+    tiktok.on_rotate = lambda old, new: ctx.publisher.rotate_token("tiktok", old, new)
     ctx.gate.on_approved(ctx.publisher.schedule_clip)
     ctx.remove_published = ctx.publisher.remove_clip
     ctx.telegram = TelegramBot(
@@ -199,6 +221,11 @@ def main(argv: list[str] | None = None) -> int:
         revision,
         secrets.backend()["name"],
     )
+    # Where the MCP server finds the app. A port number only; its token is in the keychain.
+    try:
+        (config.data_dir / "bridge.json").write_text(json.dumps({"port": port}), encoding="utf-8")
+    except OSError:
+        log.warning("could not write bridge.json; the MCP server will not find the app")
     _emit("CLIPPER_ENGINE_READY " + json.dumps({"port": port, "version": __version__}))
     server.run(sockets=[sock])
     log.info("engine stopped")

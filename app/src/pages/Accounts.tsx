@@ -1,5 +1,79 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Account, type AccountsResponse, type PostJob } from "../api";
+import { api, type Account, type AccountsResponse, type Insights, type PostJob } from "../api";
+
+const PLATFORM: Record<string, string> = {
+  youtube: "YouTube",
+  tiktok: "TikTok",
+  instagram: "Instagram",
+};
+
+function InsightsCard() {
+  const [data, setData] = useState<Insights | null>(null);
+  const [applied, setApplied] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api
+      .insights()
+      .then(setData)
+      .catch(() => setData(null));
+  }, []);
+  useEffect(load, [load]);
+
+  if (!data || data.posts === 0) return null;
+  return (
+    <>
+      <h2>What performs</h2>
+      <div className="card">
+        {!data.enough_data ? (
+          <p className="muted">
+            {data.posts} post(s) have been up for a day. Suggestions start at {data.needed}, when
+            there is enough to tell a pattern from luck.
+          </p>
+        ) : (
+          <p className="muted">
+            {data.posts} posts, median {Math.round(data.median_views).toLocaleString()} views.
+          </p>
+        )}
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Claude score</th>
+              <th>Posts</th>
+              <th>Median views</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.by_score.map((row) => (
+              <tr key={row.label}>
+                <td>{row.label}</td>
+                <td>{row.posts}</td>
+                <td>{Math.round(row.median_views).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.suggestions.map((suggestion) => (
+          <div className="banner banner-warn" key={suggestion.setting} style={{ marginTop: 12 }}>
+            {suggestion.why}{" "}
+            <button
+              className="btn"
+              disabled={applied === suggestion.setting}
+              onClick={async () => {
+                await api.updateAppSettings({ [suggestion.setting]: suggestion.suggested });
+                setApplied(suggestion.setting);
+                load();
+              }}
+            >
+              {applied === suggestion.setting
+                ? "Applied"
+                : `Change from ${suggestion.current} to ${suggestion.suggested}`}
+            </button>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
 
 const JOB_LABEL: Record<PostJob["status"], string> = {
   scheduled: "Scheduled",
@@ -46,7 +120,7 @@ function AccountRow({ account, onChanged }: { account: Account; onChanged: () =>
       <div className="streamer-main">
         <div className="streamer-name">
           <strong>{account.handle}</strong>
-          <span className="tag">YouTube</span>
+          <span className="tag">{PLATFORM[account.platform] ?? account.platform}</span>
           <span className={account.paused ? "pill pill-bad" : "pill pill-ok"}>
             {account.paused ? "Paused" : "Active"}
           </span>
@@ -169,11 +243,11 @@ export function Accounts() {
     return () => window.clearInterval(timer);
   }, [load]);
 
-  const connect = async () => {
+  const connect = async (platform: "youtube" | "tiktok" | "instagram") => {
     setError(null);
     try {
-      const result = await api.connectYouTube();
-      setAuthUrl(result.auth_url);
+      const result = await api.connectAccount(platform);
+      setAuthUrl(result.auth_url ?? null);
       await load();
     } catch (err) {
       setError((err as Error).message);
@@ -206,24 +280,35 @@ export function Accounts() {
           {error}
         </div>
       )}
-      {data && !data.google_keys_set && (
+      {data && !Object.values(data.keys_set).some(Boolean) && (
         <div className="card empty">
           <p>
-            To post to YouTube, add your Google OAuth client ID and secret under Settings, in the
-            YouTube group.
+            To post clips, add a platform's keys under Settings first: Google OAuth keys for
+            YouTube, a TikTok client key and secret, or an Instagram access token.
           </p>
           <p className="muted small">
-            They come from a Google Cloud project with the YouTube Data API enabled and an OAuth
-            client of type "Desktop app".
+            Without any, approved clips are still exported to your folder for manual upload.
           </p>
         </div>
       )}
-      {data && data.google_keys_set && (
+      {data && Object.values(data.keys_set).some(Boolean) && (
         <div className="card">
-          <div className="form-foot" style={{ paddingTop: 0 }}>
-            <button className="btn btn-primary" onClick={() => void connect()}>
-              Connect a YouTube channel
-            </button>
+          <div className="form-foot" style={{ paddingTop: 0, flexWrap: "wrap" }}>
+            {data.keys_set.youtube && (
+              <button className="btn btn-primary" onClick={() => void connect("youtube")}>
+                Connect a YouTube channel
+              </button>
+            )}
+            {data.keys_set.tiktok && (
+              <button className="btn" onClick={() => void connect("tiktok")}>
+                Connect TikTok
+              </button>
+            )}
+            {data.keys_set.instagram && (
+              <button className="btn" onClick={() => void connect("instagram")}>
+                Connect Instagram
+              </button>
+            )}
             {data.connecting && <span className="muted small">Waiting for you to sign in…</span>}
             {data.connect_error && (
               <span className="error small" role="alert">
@@ -231,6 +316,13 @@ export function Accounts() {
               </span>
             )}
           </div>
+          {data.keys_set.tiktok && (
+            <p className="muted small" style={{ margin: "10px 0 0" }}>
+              TikTok: clips arrive in your TikTok inbox as drafts, and you post them from the
+              TikTok app. TikTok does not allow apps to choose the privacy setting or post for
+              you.
+            </p>
+          )}
           {authUrl && data.connecting && (
             <div className="field">
               <span className="muted small">
@@ -250,7 +342,7 @@ export function Accounts() {
           </div>
           <div className="card">
             <div className="field" style={{ margin: 0 }}>
-              <label htmlFor="privacy">New uploads are</label>
+              <label htmlFor="privacy">New YouTube uploads are</label>
               <select
                 id="privacy"
                 value={data.privacy}
@@ -312,6 +404,7 @@ export function Accounts() {
           </table>
         </>
       )}
+      <InsightsCard />
     </section>
   );
 }

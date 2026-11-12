@@ -15,8 +15,11 @@ from engine.api.app import AppContext, get_ctx
 from engine.db.audit import write_audit
 from engine.db.models import Account, Clip, PublishJob, utcnow
 from engine.keychain import KeychainUnavailable
+from engine.publish import tiktok
 from engine.publish.errors import PublishError
+from engine.publish.instagram import InstagramPublisher
 from engine.publish.oauth import OAuthListener
+from engine.publish.tiktok import TikTokPublisher
 from engine.publish.youtube import YouTubePublisher, authorization_url, new_pkce
 
 log = logging.getLogger(__name__)
@@ -44,19 +47,25 @@ def _account_view(account: Account) -> dict:
     }
 
 
-def _google_keys(ctx: AppContext) -> tuple[str, str] | None:
+PLATFORM_KEYS = {
+    "youtube": ("google_client_id", "google_client_secret"),
+    "tiktok": ("tiktok_client_key", "tiktok_client_secret"),
+    "instagram": ("meta_access_token",),
+}
+
+
+def _keys(ctx: AppContext, platform: str) -> tuple[str, ...] | None:
     try:
-        client_id = ctx.secrets.get("google_client_id")
-        client_secret = ctx.secrets.get("google_client_secret")
+        values = tuple(ctx.secrets.get(name) for name in PLATFORM_KEYS[platform])
     except KeychainUnavailable:
         return None
-    return (client_id, client_secret) if client_id and client_secret else None
+    return values if all(values) else None  # type: ignore[return-value]
 
 
-def _youtube(ctx: AppContext) -> YouTubePublisher:
-    platform = ctx.publisher.platforms.get("youtube") if ctx.publisher else None
-    if not isinstance(platform, YouTubePublisher):
-        raise HTTPException(status_code=503, detail="The publisher is not running.")
+def _platform(ctx: AppContext, name: str, kind: type):
+    platform = ctx.publisher.platforms.get(name) if ctx.publisher else None
+    if not isinstance(platform, kind):
+        raise HTTPException(status_code=503, detail=f"Posting to {name} is not running.")
     return platform
 
 
@@ -65,65 +74,65 @@ def list_accounts(ctx: AppContext = Depends(get_ctx)) -> dict:
     with ctx.session_factory() as db:
         accounts = [_account_view(a) for a in db.scalars(select(Account).order_by(Account.id))]
     flow = ctx.oauth_flow
+    keys_set = {name: _keys(ctx, name) is not None for name in PLATFORM_KEYS}
     return {
         "accounts": accounts,
-        "google_keys_set": _google_keys(ctx) is not None,
+        "keys_set": keys_set,
+        "google_keys_set": keys_set["youtube"],
         "connecting": flow is not None and not flow.finished.is_set(),
         "connect_error": flow.error if flow is not None and flow.finished.is_set() else None,
         "privacy": ctx.settings.get().youtube_privacy,
     }
 
 
-@router.post("/accounts/youtube/connect")
-def connect_youtube(ctx: AppContext = Depends(get_ctx)) -> dict:
-    """Start the Google sign-in in the user's browser."""
-    youtube = _youtube(ctx)
-    keys = _google_keys(ctx)
-    if keys is None:
-        raise HTTPException(
-            status_code=409, detail="Add the Google OAuth client ID and secret in Settings first."
-        )
+def _save_account(ctx: AppContext, platform: str, handle: str, token: str) -> str | None:
+    """Create or refresh the account row; the token goes to the OS keychain only.
+    Returns an error message, or None."""
+    try:
+        with ctx.session_factory.begin() as db:
+            account = db.scalars(
+                select(Account).where(Account.platform == platform, Account.handle == handle)
+            ).first()
+            if account is None:
+                ref = f"acct_{platform}_{pysecrets.token_hex(8)}"
+                account = Account(platform=platform, handle=handle, keychain_ref=ref)
+                db.add(account)
+                action = "account.connect"
+            else:
+                action = "account.reconnect"
+                if account.pause_reason and account.pause_reason.startswith("Sign-in expired"):
+                    account.paused, account.pause_reason = False, None
+            ctx.secrets.set(account.keychain_ref, token)
+            db.flush()
+            write_audit(db, actor="user", action=action, object_id=f"account:{account.id}")
+    except KeychainUnavailable as exc:
+        return f"The sign-in worked, but the token could not be saved: {exc}"
+    except ValueError:
+        return "The sign-in worked, but the token is too long to store."
+    if ctx.publisher:
+        ctx.publisher.wake()
+    return None
+
+
+def _begin_sign_in(
+    ctx: AppContext, platform: str, state: str, path: str, make_url, exchange
+) -> dict:
+    """Start a loopback listener, send the browser to the platform, and finish the
+    sign-in when the platform redirects back with a code."""
     if ctx.oauth_flow is not None:
         ctx.oauth_flow.cancel()
-    pkce = new_pkce()
 
     def finish(code: str, redirect_uri: str) -> str | None:
         try:
-            tokens = youtube.client.exchange_code(code, redirect_uri, pkce)
-            refresh = tokens["refresh_token"]
-            channel = youtube.client.channel(refresh)
+            handle, token = exchange(code, redirect_uri)
         except PublishError as exc:
             return str(exc)
-        try:
-            with ctx.session_factory.begin() as db:
-                account = db.scalars(
-                    select(Account).where(
-                        Account.platform == "youtube", Account.handle == channel["title"]
-                    )
-                ).first()
-                if account is None:
-                    ref = f"acct_youtube_{pysecrets.token_hex(8)}"
-                    account = Account(platform="youtube", handle=channel["title"], keychain_ref=ref)
-                    db.add(account)
-                    action = "account.connect"
-                else:
-                    action = "account.reconnect"
-                    if account.pause_reason and account.pause_reason.startswith("Sign-in expired"):
-                        account.paused, account.pause_reason = False, None
-                # The refresh token goes to the OS keychain and nowhere else.
-                ctx.secrets.set(account.keychain_ref, refresh)
-                db.flush()
-                write_audit(db, actor="user", action=action, object_id=f"account:{account.id}")
-        except KeychainUnavailable as exc:
-            return f"The sign-in worked, but the token could not be saved: {exc}"
-        if ctx.publisher:
-            ctx.publisher.wake()
-        return None
+        return _save_account(ctx, platform, handle, token)
 
-    flow = OAuthListener(pkce.state, finish)
+    flow = OAuthListener(state, finish, path=path)
     flow.start()
     ctx.oauth_flow = flow
-    url = authorization_url(keys[0], flow.redirect_uri, pkce)
+    url = make_url(flow.redirect_uri)
     opened = False
     if ctx.open_browser:
         try:
@@ -131,6 +140,67 @@ def connect_youtube(ctx: AppContext = Depends(get_ctx)) -> dict:
         except Exception:  # noqa: BLE001 - no browser available: the UI shows the link
             opened = False
     return {"auth_url": url, "browser_opened": opened}
+
+
+def _need_keys(ctx: AppContext, platform: str, what: str) -> tuple[str, ...]:
+    keys = _keys(ctx, platform)
+    if keys is None:
+        raise HTTPException(status_code=409, detail=f"Add {what} in Settings first.")
+    return keys
+
+
+@router.post("/accounts/youtube/connect")
+def connect_youtube(ctx: AppContext = Depends(get_ctx)) -> dict:
+    """Start the Google sign-in in the user's browser."""
+    youtube = _platform(ctx, "youtube", YouTubePublisher)
+    keys = _need_keys(ctx, "youtube", "the Google OAuth client ID and secret")
+    pkce = new_pkce()
+
+    def exchange(code: str, redirect_uri: str) -> tuple[str, str]:
+        refresh = youtube.client.exchange_code(code, redirect_uri, pkce)["refresh_token"]
+        return youtube.client.channel(refresh)["title"], refresh
+
+    return _begin_sign_in(
+        ctx, "youtube", pkce.state, "", lambda uri: authorization_url(keys[0], uri, pkce), exchange
+    )
+
+
+@router.post("/accounts/tiktok/connect")
+def connect_tiktok(ctx: AppContext = Depends(get_ctx)) -> dict:
+    """Start the TikTok sign-in. Clips are then delivered to that account's inbox."""
+    platform = _platform(ctx, "tiktok", TikTokPublisher)
+    keys = _need_keys(ctx, "tiktok", "the TikTok client key and secret")
+    verifier, challenge, state = tiktok.new_pkce()
+
+    def exchange(code: str, redirect_uri: str) -> tuple[str, str]:
+        body = platform.client.exchange_code(code, redirect_uri, verifier)
+        refresh = body["refresh_token"]
+        name = platform.client.creator_name(refresh)
+        return name or f"TikTok account {str(body.get('open_id') or '')[:8]}".strip(), refresh
+
+    return _begin_sign_in(
+        ctx,
+        "tiktok",
+        state,
+        "/callback/",
+        lambda uri: tiktok.authorization_url(keys[0], uri, challenge, state),
+        exchange,
+    )
+
+
+@router.post("/accounts/instagram/connect")
+def connect_instagram(ctx: AppContext = Depends(get_ctx)) -> dict:
+    """Connect Instagram with the access token saved in Settings (no browser step)."""
+    platform = _platform(ctx, "instagram", InstagramPublisher)
+    (token,) = _need_keys(ctx, "instagram", "your Instagram access token")
+    try:
+        account = platform.client.account(token)
+    except PublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    error = _save_account(ctx, "instagram", account["username"], token)
+    if error:
+        raise HTTPException(status_code=500, detail=error)
+    return {"connected": account["username"]}
 
 
 @router.patch("/accounts/{account_id}")
@@ -179,7 +249,7 @@ def disconnect_account(account_id: int, ctx: AppContext = Depends(get_ctx)) -> d
         try:
             token = ctx.secrets.get(ref)
             if token and platform == "youtube" and ctx.publisher:
-                _youtube(ctx).client.revoke(token)
+                _platform(ctx, "youtube", YouTubePublisher).client.revoke(token)
             ctx.secrets.delete(ref)
         except KeychainUnavailable:
             pass

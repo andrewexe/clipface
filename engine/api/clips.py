@@ -79,7 +79,9 @@ def _export_dir(ctx: AppContext) -> Path:
     return Path(custom).expanduser() if custom else ctx.config.default_export_dir
 
 
-def _export(ctx: AppContext, db: Session, clip: Clip, streamer: Streamer) -> Path:
+def _export(
+    ctx: AppContext, db: Session, clip: Clip, streamer: Streamer, actor: str = "user"
+) -> Path:
     name = streamer.display_name or streamer.username
     target = export_clip(
         ExportItem(
@@ -95,7 +97,7 @@ def _export(ctx: AppContext, db: Session, clip: Clip, streamer: Streamer) -> Pat
     )
     clip.meta = {**(clip.meta or {}), "exported_path": str(target)}
     write_audit(
-        db, actor="user", action="clip.export", object_id=f"clip:{clip.id}",
+        db, actor=actor, action="clip.export", object_id=f"clip:{clip.id}",
         details={"path": str(target)},
     )  # fmt: skip
     return target
@@ -174,7 +176,12 @@ _ACTIONS = {"approved": "clip.approve", "rejected": "clip.reject", "pending": "c
 
 
 def _set_status(
-    ctx: AppContext, clip_id: int, new: str, allowed_from: tuple[str, ...], via: str | None = None
+    ctx: AppContext,
+    clip_id: int,
+    new: str,
+    allowed_from: tuple[str, ...],
+    via: str | None = None,
+    actor: str = "user",
 ) -> dict:
     with ctx.session_factory.begin() as db:
         clip, moment, streamer = _row(db, clip_id)
@@ -186,7 +193,7 @@ def _set_status(
             )
         write_audit(
             db,
-            actor="user",
+            actor=actor,
             action=_ACTIONS[new],
             object_id=f"clip:{clip.id}",
             details={"from": clip.status, **({"via": via} if via else {})},
@@ -197,7 +204,7 @@ def _set_status(
         export_error = None
         if new == "approved":
             try:
-                _export(ctx, db, clip, streamer)
+                _export(ctx, db, clip, streamer, actor)
             except ExportError as exc:
                 export_error = str(exc)
                 log.warning("export of clip %s failed: %s", clip.id, exc)

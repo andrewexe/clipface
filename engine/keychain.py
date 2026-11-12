@@ -65,6 +65,19 @@ _SPECS += [
         "From the same OAuth client.",
     ),
     SecretSpec(
+        "tiktok_client_key",
+        "TikTok client key",
+        "TikTok",
+        "From a TikTok for Developers app with Login Kit and the Content Posting API.",
+    ),
+    SecretSpec("tiktok_client_secret", "TikTok client secret", "TikTok", "From the same app."),
+    SecretSpec(
+        "meta_access_token",
+        "Instagram access token",
+        "Instagram",
+        "A Facebook Login for Business user token with instagram_content_publish.",
+    ),
+    SecretSpec(
         "telegram_bot_token",
         "Telegram bot token",
         "Phone approvals",
@@ -73,6 +86,8 @@ _SPECS += [
 ]
 KNOWN_SECRETS: dict[str, SecretSpec] = {spec.name: spec for spec in _SPECS}
 # Sign-in tokens of connected accounts live in the keychain under generated names.
+# Made and used by the app itself; never shown in Settings.
+INTERNAL = {"mcp_bridge_token"}
 ACCOUNT_REF = re.compile(r"^acct_(youtube|tiktok|instagram)_[0-9a-f]{16}$")
 
 
@@ -143,5 +158,5 @@ class SecretStore:
 
     @staticmethod
     def _check_name(name: str) -> None:
-        if name not in KNOWN_SECRETS and not ACCOUNT_REF.match(name):
+        if name not in KNOWN_SECRETS and name not in INTERNAL and not ACCOUNT_REF.match(name):
             raise KeyError(name)

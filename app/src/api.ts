@@ -196,6 +196,7 @@ export type Account = {
 export type AccountsResponse = {
   accounts: Account[];
   google_keys_set: boolean;
+  keys_set: { youtube: boolean; tiktok: boolean; instagram: boolean };
   connecting: boolean;
   connect_error: string | null;
   privacy: "private" | "unlisted" | "public";
@@ -213,6 +214,18 @@ export type PostJob = {
   url: string | null;
   removed: boolean;
 };
+
+export type Insights = {
+  posts: number;
+  enough_data: boolean;
+  needed: number;
+  median_views: number;
+  by_score: { label: string; posts: number; median_views: number }[];
+  by_trigger: { label: string; posts: number; median_views: number }[];
+  suggestions: { setting: string; current: number; suggested: number; why: string }[];
+};
+
+export type McpStatus = { enabled: boolean; can_approve: boolean };
 
 export type Facecam = { x: number; y: number; w: number; h: number };
 
@@ -304,8 +317,15 @@ export const api = {
   telegramAction: (action: "unpair" | "test") =>
     request<TelegramStatus>("POST", `/control/telegram/${action}`),
   accounts: () => request<AccountsResponse>("GET", "/accounts"),
-  connectYouTube: () =>
-    request<{ auth_url: string; browser_opened: boolean }>("POST", "/accounts/youtube/connect"),
+  connectAccount: (platform: "youtube" | "tiktok" | "instagram") =>
+    request<{ auth_url?: string; browser_opened?: boolean; connected?: string }>(
+      "POST",
+      `/accounts/${platform}/connect`,
+    ),
+  insights: () => request<Insights>("GET", "/insights"),
+  mcp: () => request<McpStatus>("GET", "/control/mcp"),
+  setMcp: (patch: { enabled?: boolean; can_approve?: boolean }) =>
+    request<McpStatus>("POST", "/control/mcp", patch),
   updateAccount: (id: number, patch: { daily_cap?: number; paused?: boolean }) =>
     request<Account>("PATCH", `/accounts/${id}`, patch),
   disconnectAccount: (id: number) => request<{ id: number }>("DELETE", `/accounts/${id}`),

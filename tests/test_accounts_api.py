@@ -264,3 +264,88 @@ def test_disconnect_deletes_the_token_revokes_it_and_drops_waiting_posts(app):
     with app.ctx.session_factory() as db:
         assert db.scalars(select(PublishJob)).all() == []
     assert call(app, "DELETE", "/accounts/1").status_code == 404
+
+
+# -- TikTok and Instagram sign-in -------------------------------------------------------------
+
+
+@pytest.fixture
+def more_platforms(app):
+    """Adds fake TikTok and Instagram behind the publisher."""
+    from engine.publish.instagram import InstagramClient, InstagramPublisher
+    from engine.publish.tiktok import TikTokClient, TikTokPublisher
+    from tests.test_tiktok_instagram import FakeInstagram, FakeTikTok
+
+    app.tt, app.ig = FakeTikTok(), FakeInstagram(utcnow)
+    tt_client = TikTokClient(
+        lambda: (
+            app.ctx.secrets.get("tiktok_client_key"),
+            app.ctx.secrets.get("tiktok_client_secret"),
+        ),
+        transport=httpx.MockTransport(app.tt),
+    )
+    ig_client = InstagramClient(transport=httpx.MockTransport(app.ig))
+    app.ctx.publisher.platforms["tiktok"] = TikTokPublisher(tt_client, utcnow)
+    app.ctx.publisher.platforms["instagram"] = InstagramPublisher(ig_client, utcnow)
+    yield app
+    tt_client.close()
+    ig_client.close()
+
+
+def save_secret(app, name, value):
+    assert call(app, "PUT", f"/settings/secrets/{name}", json={"value": value}).status_code == 200
+
+
+def test_tiktok_sign_in_uses_the_callback_path_and_stores_the_token(more_platforms):
+    app = more_platforms
+    assert call(app, "POST", "/accounts/tiktok/connect").status_code == 409  # keys first
+    save_secret(app, "tiktok_client_key", "tt-key")
+    save_secret(app, "tiktok_client_secret", "tt-secret")
+    assert call(app, "GET", "/accounts").json()["keys_set"]["tiktok"] is True
+
+    response = call(app, "POST", "/accounts/tiktok/connect")
+    query = parse_qs(urlsplit(response.json()["auth_url"]).query)
+    redirect_uri = query["redirect_uri"][0]
+    assert redirect_uri.startswith("http://127.0.0.1:") and redirect_uri.endswith("/callback/")
+    assert query["scope"] == ["video.upload"]
+    app.tt.challenge = query["code_challenge"][0]
+
+    assert (
+        browser_returns(
+            redirect_uri.removesuffix("/callback/"), code="tt-code", state=query["state"][0]
+        ).status_code
+        == 404
+    )
+    page = browser_returns(redirect_uri, code="tt-code", state=query["state"][0])
+    assert "Account connected" in page.text
+    (account,) = call(app, "GET", "/accounts").json()["accounts"]
+    assert account["platform"] == "tiktok" and account["handle"] == "TikTok account abcdef12"
+    stored = {
+        name: value
+        for (_s, name), value in app.keyring.store.items()
+        if name.startswith("acct_tiktok_")
+    }
+    assert list(stored.values()) == ["tt-refresh"]
+
+
+def test_instagram_connects_with_the_saved_token_and_reports_problems(more_platforms):
+    app = more_platforms
+    assert call(app, "POST", "/accounts/instagram/connect").status_code == 409  # token first
+    save_secret(app, "meta_access_token", "ig-token")
+
+    app.ig.has_account = False
+    refused = call(app, "POST", "/accounts/instagram/connect")
+    assert refused.status_code == 409 and "professional account" in refused.json()["detail"]
+    app.ig.has_account = True
+    app.ig.token_valid = False
+    assert "no longer accepts" in call(app, "POST", "/accounts/instagram/connect").json()["detail"]
+    app.ig.token_valid = True
+
+    assert call(app, "POST", "/accounts/instagram/connect").json() == {"connected": "myclips"}
+    (account,) = call(app, "GET", "/accounts").json()["accounts"]
+    assert (account["platform"], account["handle"]) == ("instagram", "myclips")
+    assert "ig-token" not in call(app, "GET", "/accounts").text
+    assert (
+        call(app, "POST", "/accounts/instagram/connect").status_code == 200
+    )  # again: same account
+    assert len(call(app, "GET", "/accounts").json()["accounts"]) == 1

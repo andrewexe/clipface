@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type AppSettings, type Control, type TelegramStatus } from "../api";
+import {
+  api,
+  type AppSettings,
+  type Control,
+  type McpStatus,
+  type TelegramStatus,
+} from "../api";
 
 /** Autonomy level, music handling and your own blocked words. */
 export function SafetySettings() {
@@ -279,6 +285,87 @@ export function PhoneApprovals() {
             </button>
             {note && <span className="muted small">{note}</span>}
           </div>
+        </>
+      )}
+      {error && (
+        <p className="error small" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const MCP_CONFIG = `{
+  "mcpServers": {
+    "clipper": {
+      "command": "<path to Clipper>\\\\engine\\\\clipper-engine.exe",
+      "args": ["--mcp"]
+    }
+  }
+}`;
+
+/** Letting Claude Desktop operate the app through five narrow tools. */
+export function McpSettings() {
+  const [status, setStatus] = useState<McpStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .mcp()
+      .then(setStatus)
+      .catch((err: Error) => setError(err.message));
+  }, []);
+
+  const set = async (patch: { enabled?: boolean; can_approve?: boolean }) => {
+    setError(null);
+    try {
+      setStatus(await api.setMcp(patch));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  if (!status) {
+    return error ? (
+      <div className="banner banner-bad" role="alert">
+        {error}
+      </div>
+    ) : null;
+  }
+  return (
+    <div className="card">
+      <h3>Claude Desktop (MCP)</h3>
+      <p className="muted">
+        Lets Claude Desktop list clips, reject a clip, pause publishing and read stats. It cannot
+        see keys or files, change settings, or resume publishing.
+      </p>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={status.enabled}
+          onChange={(event) => void set({ enabled: event.target.checked })}
+        />
+        Allow Claude Desktop to connect
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={status.can_approve}
+          disabled={!status.enabled}
+          onChange={(event) => void set({ can_approve: event.target.checked })}
+        />
+        Also allow it to approve clips
+      </label>
+      <p className="muted small">
+        Approving is off by default: clip titles and transcripts come from streams, and text in
+        them could try to talk an assistant into approving. Leave it off unless you review what
+        it approves.
+      </p>
+      {status.enabled && (
+        <>
+          <p className="small">Add this to Claude Desktop's MCP configuration:</p>
+          <pre className="log">{MCP_CONFIG}</pre>
         </>
       )}
       {error && (

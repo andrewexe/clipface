@@ -13,6 +13,11 @@ hiddenimports = [
     *collect_submodules("alembic"),
     "sqlalchemy.dialects.sqlite",
     *collect_submodules("streamlink.plugins"),  # Twitch and Kick plugins, loaded by name
+    # mcp.cli needs an optional package and exits when imported without it.
+    *collect_submodules("mcp", filter=lambda name: not name.startswith("mcp.cli"), on_error="ignore"),
+    *collect_submodules("anthropic", on_error="ignore"),
+    "engine.mcp_server",
+    "engine.selfcheck",
 ]
 
 a = Analysis(
@@ -25,6 +30,8 @@ a = Analysis(
         ("engine/policy/blocklist.txt", "engine/policy"),
         *copy_metadata("keyring"),
         *copy_metadata("streamlink"),
+        *copy_metadata("mcp"),
+        *copy_metadata("anthropic"),
         *collect_data_files("streamlink"),
         *collect_data_files("imageio_ffmpeg"),  # the bundled ffmpeg binary
     ],

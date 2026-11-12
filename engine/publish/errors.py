@@ -15,3 +15,7 @@ class PublishRejected(PublishError):
     def __init__(self, message: str, reason: str | None = None) -> None:
         super().__init__(message)
         self.reason = reason
+
+
+class PublishPending(PublishError):
+    """Nothing is wrong: the platform is still processing. Look again shortly."""

@@ -26,14 +26,17 @@ padding-top:15vh">
 
 
 class OAuthListener:
-    def __init__(self, state: str, on_code: Callable[[str, str], str | None]) -> None:
+    def __init__(
+        self, state: str, on_code: Callable[[str, str], str | None], path: str = ""
+    ) -> None:
         """`on_code(code, redirect_uri)` finishes the sign-in and returns an error message
         to show, or None on success."""
         self._state = state
         self._on_code = on_code
         self._server = HTTPServer(("127.0.0.1", 0), self._handler())
         self._server.timeout = 1.0
-        self.redirect_uri = f"http://127.0.0.1:{self._server.server_address[1]}"
+        self._path = path  # some platforms want a fixed path, e.g. "/callback/"
+        self.redirect_uri = f"http://127.0.0.1:{self._server.server_address[1]}{path}"
         self.finished = threading.Event()
         self.error: str | None = None
         self._thread = threading.Thread(target=self._serve, name="oauth-listener", daemon=True)
@@ -75,7 +78,8 @@ class OAuthListener:
 
             def do_GET(self) -> None:  # noqa: N802 - name required by BaseHTTPRequestHandler
                 parts = urlsplit(self.path)
-                if parts.path not in ("", "/"):
+                wanted = listener._path.rstrip("/")
+                if parts.path.rstrip("/") != wanted:
                     return self._page(404, "Not found", "")
                 query = parse_qs(parts.query)
                 state = query.get("state", [""])[0]

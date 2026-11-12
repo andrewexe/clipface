@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets as pysecrets
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -13,6 +14,7 @@ from engine.api.app import AppContext, get_ctx
 from engine.control.bot_actions import set_publishing_paused
 from engine.db.audit import write_audit
 from engine.db.models import AuditLog, utcnow
+from engine.keychain import KeychainUnavailable
 
 router = APIRouter(prefix="/control")
 
@@ -132,3 +134,41 @@ def set_autonomy(body: AutonomyIn, ctx: AppContext = Depends(get_ctx)) -> dict:
         with ctx.session_factory.begin() as db:
             write_audit(db, actor="user", action="autonomy.set", details=changes["autonomy_level"])
     return _view(ctx)
+
+
+class McpIn(BaseModel):
+    enabled: bool | None = None
+    can_approve: bool | None = None
+
+
+def _mcp_view(ctx: AppContext) -> dict:
+    settings = ctx.settings.get()
+    return {"enabled": settings.mcp_enabled, "can_approve": settings.mcp_can_approve}
+
+
+@router.get("/mcp")
+def mcp_status(ctx: AppContext = Depends(get_ctx)) -> dict:
+    return _mcp_view(ctx)
+
+
+@router.post("/mcp")
+def mcp_set(body: McpIn, ctx: AppContext = Depends(get_ctx)) -> dict:
+    """Turn the MCP bridge on or off, and decide whether it may approve clips."""
+    patch = {}
+    if body.enabled is not None:
+        patch["mcp_enabled"] = body.enabled
+    if body.can_approve is not None:
+        patch["mcp_can_approve"] = body.can_approve
+    try:
+        if body.enabled is True and not ctx.settings.get().mcp_enabled:
+            # A fresh token each time it is switched on; kept in the OS keychain only.
+            ctx.secrets.set("mcp_bridge_token", pysecrets.token_urlsafe(32))
+        elif body.enabled is False:
+            ctx.secrets.delete("mcp_bridge_token")
+    except KeychainUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    _settings, changes = ctx.settings.update(patch)
+    if changes:
+        with ctx.session_factory.begin() as db:
+            write_audit(db, actor="user", action="mcp.settings", details=changes)
+    return _mcp_view(ctx)

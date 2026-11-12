@@ -64,6 +64,10 @@ class AppSettings(BaseModel):
     telegram_chat_id: int = 0  # the one private chat the bot obeys; 0 means not paired
     telegram_notify: bool = True
 
+    # MCP (letting Claude Desktop operate the app)
+    mcp_enabled: bool = False
+    mcp_can_approve: bool = False
+
     # Review and export
     export_dir: str = Field("", max_length=500)  # empty: the default folder in Videos
 

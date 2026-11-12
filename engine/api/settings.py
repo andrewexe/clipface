@@ -95,6 +95,8 @@ _HAS_ITS_OWN_CONTROL = {
     "autonomy_l2_since",
     "publishing_paused",
     "telegram_chat_id",
+    "mcp_enabled",
+    "mcp_can_approve",
 }
 
 

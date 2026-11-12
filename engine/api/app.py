@@ -21,7 +21,7 @@ from engine import __version__
 from engine.config import Config
 from engine.control.telegram import TelegramBot
 from engine.db.session import current_revision, make_session_factory
-from engine.keychain import SecretStore
+from engine.keychain import KeychainUnavailable, SecretStore
 from engine.monitor.service import Monitor
 from engine.policy.gate import PolicyGate
 from engine.publish.oauth import OAuthListener
@@ -68,6 +68,15 @@ class AppContext:
         self.schema_revision = current_revision(self.db_engine)
         self.settings = SettingsStore(self.config.settings_file)
 
+    def bridge_token_ok(self, supplied: str) -> bool:
+        if not supplied or not self.settings.get().mcp_enabled:
+            return False
+        try:
+            expected = self.secrets.get("mcp_bridge_token")
+        except KeychainUnavailable:
+            return False
+        return bool(expected) and hmac.compare_digest(supplied.encode(), expected.encode())
+
     def services(self) -> list:
         """Background services, in start order."""
         return [
@@ -87,7 +96,11 @@ def get_ctx(request: Request) -> AppContext:
 def require_token(request: Request) -> None:
     ctx: AppContext = request.app.state.ctx
     scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or not hmac.compare_digest(supplied.encode(), ctx.token.encode()):
+    ok = scheme.lower() == "bearer" and hmac.compare_digest(supplied.encode(), ctx.token.encode())
+    if not ok and scheme.lower() == "bearer" and request.url.path.startswith("/bridge/"):
+        # The MCP bridge has its own token, good for /bridge/ and nothing else.
+        ok = ctx.bridge_token_ok(supplied)
+    if not ok:
         raise HTTPException(
             status_code=401,
             detail="missing or invalid session token",
@@ -96,7 +109,18 @@ def require_token(request: Request) -> None:
 
 
 def create_app(ctx: AppContext) -> FastAPI:
-    from engine.api import accounts, clips, control, health, logs, moments, settings, streamers
+    from engine.api import (
+        accounts,
+        bridge,
+        clips,
+        control,
+        health,
+        insights,
+        logs,
+        moments,
+        settings,
+        streamers,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -149,4 +173,6 @@ def create_app(ctx: AppContext) -> FastAPI:
     app.include_router(clips.router)
     app.include_router(control.router)
     app.include_router(accounts.router)
+    app.include_router(bridge.router)
+    app.include_router(insights.router)
     return app

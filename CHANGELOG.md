@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.11.0 - Phase 10: more platforms, insights, MCP (2026-11-12)
+
+### Added
+
+- TikTok: connected accounts receive each approved clip in their TikTok inbox as a draft,
+  uploaded with the Content Posting API. You finish and post it in the TikTok app.
+- Instagram: approved clips are published as Reels through the Graph API, uploaded from
+  this computer with Meta's resumable upload.
+- Both follow the same rules as YouTube: one post per clip per account, scheduled with
+  gaps and caps, re-checked at posting time, and a retry never makes a second post. A
+  platform that is still processing a video is waited on without counting as a failure.
+- Insights on the Accounts page: views by Claude score, once posts have been up for a
+  day. After 20 posts it may suggest a different auto-approve level or detection
+  threshold, with the numbers behind it and a button to apply it. It never changes a
+  setting by itself.
+- MCP server for Claude Desktop (`clipper-engine --mcp`): five tools, to list clips,
+  approve, reject, pause publishing and read stats. It uses its own token, which opens
+  only those five routes. It returns no keys or file paths, cannot change settings,
+  cannot resume publishing, and cannot bring back a rejected clip.
+- `clipper-engine --self-check` verifies a build: ffmpeg and its filters, the Twitch and
+  Kick stream plugins, migrations, the blocked-word list, the keychain, and the SDKs.
+- The app's content security policy now allows the Queue's clip previews.
+
+### Differs from PLAN.md
+
+- TikTok is drafts, not automatic posts. TikTok's rules require the account owner to
+  choose the privacy setting by hand for every post and to consent before upload, and
+  limit unaudited apps to private posts; its audit is for apps with a wide audience.
+  Sending drafts to the inbox is the route TikTok's docs offer that fits.
+- Instagram needs a Facebook Login for Business token, pasted into Settings. Meta allows
+  uploading a local file only with that kind of token; every other route needs the video
+  on a public web server.
+- Approving over MCP is off by default. Clip titles and transcripts come from streams,
+  so text in them could try to talk an assistant into approving. You can switch it on.
+- The Higgsfield plugin is a placeholder that reports "not connected". The plan says to
+  confirm API access before building on it, and that could not be confirmed.
+- TikTok and Instagram posts cannot be deleted by the app (their APIs do not allow it).
+  A streamer's stop request lists them for you to remove by hand.
+
 ## 0.10.0 - Phase 9: Phone approvals (2026-11-12)
 
 ### Added

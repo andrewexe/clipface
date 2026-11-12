@@ -40,12 +40,18 @@ from engine.keychain import KeychainUnavailable, SecretStore
 from engine.monitor.urls import StreamerRef
 from engine.policy.gate import PERMITTED
 from engine.policy.rules import build_description, normalise_rules
-from engine.publish.errors import PublishAuthError, PublishError, PublishRejected
+from engine.publish.errors import (
+    PublishAuthError,
+    PublishError,
+    PublishPending,
+    PublishRejected,
+)
 from engine.settings import AppSettings, SettingsStore
 
 log = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 5
+MAX_WAITS = 60  # two hours of two-minute checks
 ACTIVE = ("scheduled", "running", "succeeded")
 STRIKE_REASONS = {"copyright", "claim", "trademark", "legal", "termsOfUse", "inappropriate"}
 POST_CHECK_INTERVAL_S = 1800
@@ -366,6 +372,8 @@ class Publisher:
             return self._auth_failed(job_id, account_id, str(exc))
         except PublishRejected as exc:
             return self._finish(job_id, "failed", error=str(exc))
+        except PublishPending as exc:
+            return self._wait_for_platform(job_id, str(exc))
         except PublishError as exc:
             return self._retry_later(job_id, str(exc), state["attempts"])
         except Exception as exc:  # noqa: BLE001 - never let one job stop the publisher
@@ -408,6 +416,35 @@ class Publisher:
             job.status, job.error = "scheduled", error
             job.scheduled_at = self._now() + timedelta(minutes=2 ** min(attempts, 6))
         return "scheduled"
+
+    def _wait_for_platform(self, job_id: int, note: str) -> str:
+        """The platform is still processing: check again in two minutes. This is not a
+        failure, so it does not use up the job's attempts, but it does not wait forever."""
+        with self._session_factory.begin() as db:
+            job = db.get(PublishJob, job_id)
+            state = dict(job.state or {})
+            state["waits"] = int(state.get("waits", 0)) + 1
+            state["attempts"] = max(0, int(state.get("attempts", 1)) - 1)
+            job.state = state
+            if state["waits"] > MAX_WAITS:
+                job.status, job.error = "failed", "the platform never finished processing it"
+                return "failed"
+            job.status, job.error = "scheduled", note
+            job.scheduled_at = self._now() + timedelta(minutes=2)
+        return "scheduled"
+
+    def rotate_token(self, platform: str, old: str, new: str) -> None:
+        """A platform issued a new refresh token: store it in place of the old one."""
+        with self._session_factory() as db:
+            refs = db.scalars(
+                select(Account.keychain_ref).where(Account.platform == platform)
+            ).all()
+        for ref in refs:
+            try:
+                if ref and self._secrets.get(ref) == old:
+                    self._secrets.set(ref, new)
+            except KeychainUnavailable:
+                log.warning("could not store a rotated %s token", platform)
 
     def _auth_failed(self, job_id: int, account_id: int, error: str) -> str:
         with self._session_factory.begin() as db:

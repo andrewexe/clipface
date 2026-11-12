@@ -1,6 +1,6 @@
 [project]
 name = "clipper-engine"
-version = "0.1.0"
+version = "0.11.0"
 description = "Local engine for the Stream Clipper desktop app"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -16,6 +16,7 @@ dependencies = [
     "websockets>=17.4",
     "anthropic>=2.8.0",
     "numpy>=2.5.4",
+    "mcp>=2.3.0",
 ]
 
 [dependency-groups]
