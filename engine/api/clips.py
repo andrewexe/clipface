@@ -16,7 +16,8 @@ from engine.api.app import AppContext, get_ctx
 from engine.db.audit import write_audit
 from engine.db.models import Clip, Moment, Streamer, StreamSession, utcnow
 from engine.monitor.urls import StreamerRef
-from engine.publish.export import ExportError, ExportItem, credit_line, export_clip
+from engine.policy.rules import build_description, credit_line
+from engine.publish.export import ExportError, ExportItem, export_clip
 from engine.render.render import RenderError
 
 log = logging.getLogger(__name__)
@@ -63,7 +64,8 @@ def _view(clip: Clip, moment: Moment, streamer: Streamer) -> dict:
             "url": ref.url,
             "permission_status": streamer.permission_status,
         },
-        "credit": credit_line(name, ref.url),
+        "credit": credit_line(name, ref.url, streamer.program_rules),
+        "description": build_description(clip.caption, name, ref.url, streamer.program_rules),
         "triggers": (moment.signal_scores or {}).get("triggers", []),
         "signal_scores": moment.signal_scores,
         "policy": clip.policy_result,
@@ -87,6 +89,7 @@ def _export(ctx: AppContext, db: Session, clip: Clip, streamer: Streamer) -> Pat
             caption=clip.caption,
             streamer_name=name,
             channel_url=StreamerRef(streamer.platform, streamer.username).url,
+            rules=streamer.program_rules,
         ),
         _export_dir(ctx),
     )

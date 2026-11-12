@@ -39,6 +39,34 @@ function Preview({ clip, version }: { clip: Clip; version: number }) {
   return <video className="player" src={url} controls autoPlay loop playsInline />;
 }
 
+function PolicyPanel({ clip }: { clip: Clip }) {
+  const policy = clip.policy;
+  if (!policy) {
+    return <p className="muted small">Safety checks have not run on this clip yet.</p>;
+  }
+  if (policy.verdict === "clean") {
+    return (
+      <p className="small policy-clean">
+        Safety checks passed.
+        {policy.decision?.why.length ? ` Needs your approval because ${policy.decision.why.join("; ")}.` : ""}
+      </p>
+    );
+  }
+  const blocked = policy.verdict === "block";
+  return (
+    <div className={blocked ? "banner banner-bad" : "banner banner-warn"} role="status">
+      <strong>
+        {blocked ? "Rejected by the safety checks." : "The safety checks want you to look at this."}
+      </strong>
+      <ul className="findings">
+        {policy.findings.map((finding, index) => (
+          <li key={index}>{finding.detail}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Detail({
   clip,
   exportDir,
@@ -131,8 +159,8 @@ function Detail({
             {clip.streamer.name} ({clip.streamer.platform}) · {when(clip.start_ts)} ·{" "}
             {Math.round(clip.duration)} s
           </dd>
-          <dt>Credit</dt>
-          <dd>{clip.credit}</dd>
+          <dt>Posts as</dt>
+          <dd className="pre">{clip.description}</dd>
           <dt>Found by</dt>
           <dd>
             {triggers || "unknown"}
@@ -165,6 +193,7 @@ function Detail({
             </>
           )}
         </dl>
+        <PolicyPanel clip={clip} />
         {clip.streamer.permission_status === "none" && (
           <p className="muted small">
             You have not recorded permission from {clip.streamer.name}. Check before uploading.

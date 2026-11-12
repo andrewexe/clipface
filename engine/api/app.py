@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
@@ -22,6 +22,7 @@ from engine.config import Config
 from engine.db.session import current_revision, make_session_factory
 from engine.keychain import SecretStore
 from engine.monitor.service import Monitor
+from engine.policy.gate import PolicyGate
 from engine.recorder.service import Recorder
 from engine.render.pipeline import ClipPipeline
 from engine.settings import SettingsStore
@@ -46,6 +47,9 @@ class AppContext:
     recorder: Recorder | None = None
     signals: SignalService | None = None
     pipeline: ClipPipeline | None = None
+    gate: PolicyGate | None = None
+    # Deletes a published clip's posts from the platforms; set by the publisher.
+    remove_published: Callable[[int], bool] | None = None
     settings: SettingsStore = field(init=False)
     session_factory: sessionmaker[Session] = field(init=False)
     # Read once: the schema only changes at startup, and health is polled constantly.
@@ -78,7 +82,7 @@ def require_token(request: Request) -> None:
 
 
 def create_app(ctx: AppContext) -> FastAPI:
-    from engine.api import clips, health, logs, moments, settings, streamers
+    from engine.api import clips, control, health, logs, moments, settings, streamers
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -129,4 +133,5 @@ def create_app(ctx: AppContext) -> FastAPI:
     app.include_router(streamers.router)
     app.include_router(moments.router)
     app.include_router(clips.router)
+    app.include_router(control.router)
     return app

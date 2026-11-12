@@ -7,6 +7,7 @@ import {
   type StreamersResponse,
 } from "../api";
 import { FacecamEditor } from "./FacecamEditor";
+import { ProgramRulesEditor } from "./ProgramRules";
 
 const PLATFORM_NAMES: Record<string, string> = { twitch: "Twitch", kick: "Kick" };
 
@@ -94,6 +95,9 @@ function StreamerRow({ streamer, onChanged }: { streamer: Streamer; onChanged: (
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [editingLayout, setEditingLayout] = useState(false);
+  const [editingRules, setEditingRules] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const run = async (action: () => Promise<unknown>) => {
@@ -140,6 +144,42 @@ function StreamerRow({ streamer, onChanged }: { streamer: Streamer; onChanged: (
             {error}
           </div>
         )}
+        {notice && (
+          <div className="small" role="status">
+            {notice}
+          </div>
+        )}
+        {stopping && (
+          <div className="banner banner-bad stop-confirm">
+            <strong>Stop clipping {streamer.display_name ?? streamer.username}?</strong> Use this
+            when they ask you to stop. It pauses them, withdraws permission, drops their clips
+            from the queue, cancels scheduled posts and takes down what was published.
+            <div className="detail-actions">
+              <button
+                className="btn btn-danger"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    const result = await api.stopStreamer(streamer.id);
+                    setStopping(false);
+                    setNotice(
+                      `Stopped. ${result.dropped} clip(s) dropped, ${result.removed} post(s) taken down, ` +
+                        `${result.cancelled_posts} scheduled post(s) cancelled.` +
+                        (result.could_not_remove.length
+                          ? ` ${result.could_not_remove.length} post(s) could not be taken down automatically: remove them by hand.`
+                          : ""),
+                    );
+                  })
+                }
+              >
+                Stop and remove
+              </button>
+              <button className="btn" disabled={busy} onClick={() => setStopping(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <div className="streamer-actions">
         <select
@@ -161,6 +201,11 @@ function StreamerRow({ streamer, onChanged }: { streamer: Streamer; onChanged: (
             </option>
           ))}
         </select>
+        {streamer.permission_status === "program" && (
+          <button className="btn" disabled={busy} onClick={() => setEditingRules(true)}>
+            Rules
+          </button>
+        )}
         <button
           className="btn"
           disabled={busy}
@@ -192,11 +237,31 @@ function StreamerRow({ streamer, onChanged }: { streamer: Streamer; onChanged: (
             </button>
           </>
         ) : (
-          <button className="btn" disabled={busy} onClick={() => setConfirming(true)}>
-            Remove
-          </button>
+          <>
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={() => setStopping(true)}
+              title="The streamer asked you to stop"
+            >
+              Stop
+            </button>
+            <button className="btn" disabled={busy} onClick={() => setConfirming(true)}>
+              Remove
+            </button>
+          </>
         )}
       </div>
+      {editingRules && (
+        <ProgramRulesEditor
+          streamer={streamer}
+          onClose={() => setEditingRules(false)}
+          onSaved={() => {
+            setEditingRules(false);
+            onChanged();
+          }}
+        />
+      )}
       {editingLayout && (
         <FacecamEditor
           streamer={streamer}

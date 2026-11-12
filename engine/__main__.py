@@ -30,6 +30,8 @@ from engine.keychain import KeychainUnavailable, SecretStore
 from engine.logging_setup import SecretRedactor, setup_logging
 from engine.monitor.platforms import Credentials, KickClient, TwitchClient
 from engine.monitor.service import Monitor
+from engine.policy.classifier import PolicyClassifier
+from engine.policy.gate import PolicyGate
 from engine.recorder.service import Recorder
 from engine.recorder.store import SegmentStore
 from engine.render.pipeline import ClipPipeline
@@ -140,6 +142,12 @@ def main(argv: list[str] | None = None) -> int:
         is_recording=ctx.recorder.is_recording,
     )
     ctx.signals.add_listener(ctx.pipeline.on_moment)
+    ctx.gate = PolicyGate(
+        ctx.session_factory,
+        ctx.settings,
+        classifier=PolicyClassifier(_secret(secrets, "anthropic_api_key"), ctx.settings, ledger),
+    )
+    ctx.pipeline.add_listener(ctx.gate.review)
     app = create_app(ctx)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, type AppSettings, type Keychain, type SecretInfo } from "../api";
+import { SafetySettings } from "./Safety";
 
 function SecretRow({ secret, onChanged }: { secret: SecretInfo; onChanged: () => void }) {
   const [value, setValue] = useState("");
@@ -192,6 +193,27 @@ const SPEND_FIELDS: NumberField[] = [
   },
 ];
 
+const AUTONOMY_FIELDS: NumberField[] = [
+  {
+    key: "auto_approve_score",
+    label: "Score needed to publish without you",
+    unit: "0.5 to 1",
+    help: "At L2, a clip must score at least this and pass every safety check.",
+    min: 0.5,
+    max: 1,
+    step: 0.05,
+  },
+  {
+    key: "review_sample_rate",
+    label: "Random spot-check",
+    unit: "0 to 1",
+    help: "This share of clips that would publish on their own comes to you instead, so you can see what the checks miss. 0.1 is one in ten.",
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+];
+
 export function NumberSettings({ title, fields }: { title: string; fields: NumberField[] }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -214,7 +236,7 @@ export function NumberSettings({ title, fields }: { title: string; fields: Numbe
   }
 
   const changed = fields.filter(
-    (f) => draft[f.key] !== undefined && Number(draft[f.key]) !== settings[f.key],
+    (f) => draft[f.key] !== undefined && Number(draft[f.key]) !== Number(settings[f.key]),
   );
 
   const save = async (event: FormEvent) => {
@@ -300,6 +322,9 @@ export function Settings() {
   return (
     <section>
       <h1>Settings</h1>
+      <h2>Safety</h2>
+      <SafetySettings />
+      <NumberSettings title="Publishing without approval (L2)" fields={AUTONOMY_FIELDS} />
       <h2>Recording</h2>
       <NumberSettings title="Stream buffer" fields={RECORDING_FIELDS} />
       <h2>Highlight detection</h2>

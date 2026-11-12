@@ -630,3 +630,65 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Policy and safety */
+.findings {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.policy-clean {
+  color: var(--ok);
+}
+.pre {
+  white-space: pre-wrap;
+}
+.kill {
+  width: 100%;
+  margin-bottom: 10px;
+}
+.kill.on {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+  font-weight: 600;
+}
+.choice-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
+}
+.choice {
+  flex: 1;
+  min-width: 180px;
+  text-align: left;
+  white-space: normal;
+  padding: 10px 12px;
+}
+.choice.active {
+  border-color: var(--accent);
+  background: rgba(124, 108, 246, 0.15);
+}
+.choice strong {
+  display: block;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+}
+.field label {
+  font-weight: 600;
+}
+.stop-confirm {
+  margin-top: 8px;
+  white-space: normal;
+}
+.streamer {
+  flex-wrap: wrap;
+}
+.streamer-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}

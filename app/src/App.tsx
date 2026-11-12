@@ -3,6 +3,7 @@ import { api, type Health } from "./api";
 import { Accounts } from "./pages/Accounts";
 import { Logs } from "./pages/Logs";
 import { Queue } from "./pages/Queue";
+import { KillSwitch } from "./pages/Safety";
 import { Settings } from "./pages/Settings";
 import { Streamers } from "./pages/Streamers";
 
@@ -90,6 +91,7 @@ export function App() {
           </button>
         ))}
         <div className="sidebar-foot">
+          {engine.kind === "ok" && <KillSwitch />}
           <EngineBadge engine={engine} />
         </div>
       </nav>

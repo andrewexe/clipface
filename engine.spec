@@ -22,6 +22,7 @@ a = Analysis(
         # Alembic loads migration scripts from disk, so they ship as files.
         ("engine/db/migrations/env.py", "engine/db/migrations"),
         ("engine/db/migrations/versions/*.py", "engine/db/migrations/versions"),
+        ("engine/policy/blocklist.txt", "engine/policy"),
         *copy_metadata("keyring"),
         *copy_metadata("streamlink"),
         *collect_data_files("streamlink"),

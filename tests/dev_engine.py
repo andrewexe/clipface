@@ -79,6 +79,26 @@ class ScriptedTranscriber:
         return [Word(text, 14 + i * 0.45, 14 + i * 0.45 + 0.4) for i, text in enumerate(lines)]
 
 
+class ScriptedClassifier:
+    """Stands in for the Claude policy classifier: flags every third clip it sees."""
+
+    def __init__(self) -> None:
+        self.seen = 0
+
+    def check(self, video, duration, transcript):
+        from engine.policy.text import Finding
+
+        self.seen += 1
+        if self.seen % 3 == 0:
+            return [
+                Finding(
+                    "personal_info", "flag", "possibly: personal information is shown or spoken"
+                ),
+                Finding("classifier_notes", "flag", "A chat window with a full name is visible."),
+            ]
+        return []
+
+
 class ScriptedDetector:
     """Stands in for the signal service: marks a moment on every live session on a timer."""
 
@@ -157,6 +177,10 @@ def main() -> None:
         transcriber=ScriptedTranscriber(),
         is_recording=ctx.recorder.is_recording,
     )
+    from engine.policy.gate import PolicyGate
+
+    ctx.gate = PolicyGate(ctx.session_factory, ctx.settings, classifier=ScriptedClassifier())
+    ctx.pipeline.add_listener(ctx.gate.review)
     ctx.signals = ScriptedDetector(
         ctx.session_factory, ctx.pipeline, float(os.environ.get("DEV_MOMENT_S", "45"))
     )

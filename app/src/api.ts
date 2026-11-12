@@ -141,6 +141,7 @@ export type Streamer = {
   enabled: boolean;
   permission_status: PermissionStatus;
   facecam: Facecam | null;
+  program_rules: ProgramRules;
   added_at: string;
   state: "live" | "offline" | "checking" | "paused" | "not_found";
   last_checked_at: string | null;
@@ -157,6 +158,22 @@ export type Streamer = {
       error: string | null;
     } | null;
   } | null;
+};
+
+export type ProgramRules = { required_tags: string[]; credit_format: string; banned: string[] };
+
+export type Control = {
+  publishing_paused: boolean;
+  autonomy_level: "L1" | "L2";
+  autonomy_l2_since: string | null;
+  l3: { eligible: boolean; reason: string };
+};
+
+export type StopResult = {
+  dropped: number;
+  removed: number;
+  cancelled_posts: number;
+  could_not_remove: number[];
 };
 
 export type Facecam = { x: number; y: number; w: number; h: number };
@@ -182,7 +199,13 @@ export type Clip = {
   credit: string;
   triggers: string[];
   signal_scores: Record<string, unknown> | null;
-  policy: Record<string, unknown> | null;
+  description: string;
+  policy: {
+    verdict: "clean" | "flag" | "block";
+    findings: { check: string; verdict: "flag" | "block"; detail: string }[];
+    decision?: { action: string; why: string[] };
+    sampled?: boolean;
+  } | null;
   meta: {
     captions?: boolean;
     captions_note?: string | null;
@@ -220,8 +243,13 @@ export type AppSettings = {
   scoring_model: string;
   score_min: number;
   anthropic_daily_cap_usd: number;
+  auto_approve_score: number;
+  review_sample_rate: number;
+  music_threshold: number;
+  music_action: "review" | "reject";
+  blocked_words: string[];
   export_dir: string;
-  [key: string]: number | string | boolean;
+  [key: string]: number | string | boolean | string[];
 };
 
 export type StreamersResponse = {
@@ -232,6 +260,10 @@ export type StreamersResponse = {
 };
 
 export const api = {
+  control: () => request<Control>("GET", "/control"),
+  setPaused: (paused: boolean) => request<Control>("POST", "/control/kill-switch", { paused }),
+  setAutonomy: (level: "L1" | "L2" | "L3") => request<Control>("POST", "/control/autonomy", { level }),
+  stopStreamer: (id: number) => request<StopResult>("POST", `/streamers/${id}/stop`),
   clips: (status: ClipStatus) => request<ClipsResponse>("GET", `/clips?status=${status}`),
   editClip: (id: number, patch: { title?: string; caption?: string }) =>
     request<Clip>("PATCH", `/clips/${id}`, patch),
@@ -248,6 +280,7 @@ export const api = {
       enabled?: boolean;
       permission_status?: PermissionStatus;
       layout?: { facecam: Facecam | null };
+      program_rules?: ProgramRules;
     },
   ) => request<Streamer>("PATCH", `/streamers/${id}`, patch),
   removeStreamer: (id: number) => request<{ id: number }>("DELETE", `/streamers/${id}`),

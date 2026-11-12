@@ -43,6 +43,16 @@ class AppSettings(BaseModel):
     score_min: float = Field(0.4, ge=0, le=1)  # moments scored below this are not rendered
     anthropic_daily_cap_usd: float = Field(5.0, ge=0, le=1000)
 
+    # Policy gate and autonomy
+    autonomy_level: str = Field("L1", pattern=r"^L[12]$")  # L1: every clip needs approval
+    autonomy_l2_since: str = ""  # when L2 was last switched on (ISO time)
+    publishing_paused: bool = False  # the kill switch
+    auto_approve_score: float = Field(0.8, ge=0.5, le=1)
+    review_sample_rate: float = Field(0.10, ge=0, le=1)
+    music_threshold: float = Field(0.5, ge=0.05, le=1)
+    music_action: str = Field("review", pattern=r"^(review|reject)$")
+    blocked_words: list[str] = Field(default_factory=list, max_length=200)
+
     # Review and export
     export_dir: str = Field("", max_length=500)  # empty: the default folder in Videos
 

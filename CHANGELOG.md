@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.8.0 - Phase 7: Policy gate and controls (2026-11-12)
+
+### Added
+
+- Policy gate: every rendered clip is checked before it can be published.
+  - Local, always on: blocked words (a built-in list stored as hashes, plus your own),
+    personal details in speech (phone, card and ID numbers, emails, street addresses),
+    gambling promotion, and a streamer's program-banned topics.
+  - Music: the clip's audio is checked for held notes and a steady beat. Music sends the
+    clip to you, or rejects it if you choose.
+  - Content check: Claude looks at five frames of the finished clip plus the transcript
+    for nudity or sexual content, slurs or hate, a possible minor on screen, personal
+    information, private messages on screen, gambling promotion, and abusive donation or
+    text-to-speech messages. "Yes" rejects the clip; "unsure" sends it to you.
+  - Fail closed: if the content check cannot run (no key, budget spent, API down,
+    declined or unreadable reply) or the gate itself crashes, the clip is held for you.
+- Autonomy levels: L1 (default, every clip needs approval) and L2 (a clean clip publishes
+  on its own only if it scored at least 0.8, the streamer's permission is Granted or
+  Clipping program, the streamer is active and publishing is not paused). One in ten of
+  those still comes to you at random.
+- Kill switch in the sidebar on every page: pauses all automatic approval and publishing.
+- "Stop" on a streamer, for when they ask you to: pauses them, withdraws permission,
+  drops their queued clips, cancels scheduled posts, and takes down published ones.
+  Posts it could not take down are listed so you can remove them by hand.
+- Clipping-program rules per streamer (required hashtags, credit format, banned topics),
+  applied to every description. The credit always names the streamer and links their
+  channel, whatever the format says.
+- The Queue shows each clip's findings and the exact description it will post with.
+- `python -m engine.policy.check clip.mp4` runs the checks on any file with your key;
+  `tests/make_policy_samples.py` makes sample clips to try it on.
+
+### Differs from PLAN.md
+
+- Music detection finds that music is playing, not whose music it is. Naming a
+  copyrighted track needs a paid fingerprint service; the detector is built so one can be
+  added. It was tuned on generated music and synthesized speech only, so expect to adjust
+  `music_threshold` once you see it on real clips.
+- Clips with music are held or rejected. Muting them is not built.
+- L3 is locked and not built. The plan says when it unlocks (two weeks of L2 with no
+  strikes), which the app tracks and shows, but not what L3 would change.
+
 ## 0.7.0 - Phase 6: Claude scoring (2026-11-11)
 
 ### Added

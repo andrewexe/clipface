@@ -12,11 +12,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from engine.api.app import AppContext, get_ctx
+from engine.control.stop import stop_streamer
 from engine.db.audit import write_audit
 from engine.db.models import Streamer, StreamSession, utcnow
 from engine.media.ffmpeg import ffmpeg_path, no_window_kwargs
 from engine.monitor.service import StreamerStatus, close_open_sessions
 from engine.monitor.urls import MAX_INPUT_LEN, InvalidStreamerUrl, StreamerRef, parse_streamer_url
+from engine.policy.rules import normalise_rules
 from engine.render.layout import valid_facecam
 
 log = logging.getLogger(__name__)
@@ -44,6 +46,7 @@ class StreamerPatch(BaseModel):
     enabled: bool | None = None
     permission_status: PermissionStatus | None = None
     layout: LayoutIn | None = None
+    program_rules: dict | None = None  # required_tags, credit_format, banned
 
 
 def _view(
@@ -71,6 +74,7 @@ def _view(
         "enabled": streamer.enabled,
         "permission_status": streamer.permission_status,
         "facecam": valid_facecam(streamer.layout),
+        "program_rules": normalise_rules(streamer.program_rules),
         "added_at": streamer.added_at.isoformat(),
         "state": state,
         "last_checked_at": status.last_checked_at.isoformat() if status.last_checked_at else None,
@@ -178,6 +182,17 @@ def update_streamer(
                 details={"from": streamer.permission_status, "to": body.permission_status},
             )
             streamer.permission_status = body.permission_status
+        if body.program_rules is not None:
+            rules = normalise_rules(body.program_rules)
+            if rules != normalise_rules(streamer.program_rules):
+                streamer.program_rules = rules
+                write_audit(
+                    db,
+                    actor="user",
+                    action="streamer.program_rules",
+                    object_id=f"streamer:{streamer.id}",
+                    details=rules,
+                )
         if body.layout is not None:
             new_layout = (
                 {"facecam": body.layout.facecam.model_dump()} if body.layout.facecam else None
@@ -244,6 +259,20 @@ def latest_frame(streamer_id: int, ctx: AppContext = Depends(get_ctx)) -> Respon
     raise HTTPException(
         status_code=404, detail="No recent footage yet. Try again while the streamer is live."
     )
+
+
+@router.post("/streamers/{streamer_id}/stop")
+def stop(streamer_id: int, ctx: AppContext = Depends(get_ctx)) -> dict:
+    """The streamer asked you to stop: disable them, drop their clips, take posts down."""
+    with ctx.session_factory.begin() as db:
+        streamer = _get_or_404(db, streamer_id)
+        summary = stop_streamer(db, streamer, ctx.remove_published)
+        db.flush()
+        view = _view(streamer, None, _status(ctx, streamer.id))
+    for service in ctx.services():
+        if service is not None:
+            service.wake()
+    return {"streamer": view, **summary}
 
 
 @router.delete("/streamers/{streamer_id}")

@@ -11,6 +11,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from engine.policy.rules import build_description
+
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
              *(f"LPT{i}" for i in range(1, 10))}  # fmt: skip
@@ -28,6 +30,7 @@ class ExportItem:
     caption: str | None
     streamer_name: str
     channel_url: str
+    rules: dict | None = None  # the streamer's clipping-program rules, if any
 
 
 def safe_name(text: str, limit: int = 80) -> str:
@@ -40,14 +43,8 @@ def safe_name(text: str, limit: int = 80) -> str:
     return cleaned
 
 
-def credit_line(streamer_name: str, channel_url: str) -> str:
-    return f"Clip from {streamer_name}: {channel_url}"
-
-
 def description(item: ExportItem) -> str:
-    parts = [item.caption.strip()] if item.caption and item.caption.strip() else []
-    parts.append(credit_line(item.streamer_name, item.channel_url))
-    return "\n\n".join(parts)
+    return build_description(item.caption, item.streamer_name, item.channel_url, item.rules)
 
 
 def export_clip(item: ExportItem, folder: Path) -> Path:
