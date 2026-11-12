@@ -202,7 +202,9 @@ def _set_status(ctx: AppContext, clip_id: int, new: str, allowed_from: tuple[str
         db.flush()
         view = _view(clip, moment, streamer)
         view["export_error"] = export_error
-        return view
+    if new == "approved" and ctx.publisher is not None:
+        view["scheduled_posts"] = len(ctx.publisher.schedule_clip(clip_id))
+    return view
 
 
 @router.post("/clips/{clip_id}/approve")

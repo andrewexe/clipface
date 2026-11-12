@@ -692,3 +692,17 @@ kbd {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.cap-input {
+  width: 64px;
+  text-align: right;
+}
+.streamer-actions {
+  align-items: center;
+}
+.full-row {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+}
+.full-row .secret-controls {
+  flex-wrap: wrap;
+}

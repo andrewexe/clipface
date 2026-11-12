@@ -5,6 +5,7 @@ Secret Service on Linux). Nothing here writes a secret to disk, the database, or
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 import keyring
@@ -50,7 +51,29 @@ _SPECS = [
         "A Deepgram API key. Used for captions; only clip audio is sent.",
     ),
 ]
+_SPECS += [
+    SecretSpec(
+        "google_client_id",
+        "Google OAuth client ID",
+        "YouTube",
+        "From a Google Cloud project with the YouTube Data API enabled (type: Desktop app).",
+    ),
+    SecretSpec(
+        "google_client_secret",
+        "Google OAuth client secret",
+        "YouTube",
+        "From the same OAuth client.",
+    ),
+    SecretSpec(
+        "telegram_bot_token",
+        "Telegram bot token",
+        "Phone approvals",
+        "From @BotFather. Lets the app send clips to your phone for approval.",
+    ),
+]
 KNOWN_SECRETS: dict[str, SecretSpec] = {spec.name: spec for spec in _SPECS}
+# Sign-in tokens of connected accounts live in the keychain under generated names.
+ACCOUNT_REF = re.compile(r"^acct_(youtube|tiktok|instagram)_[0-9a-f]{16}$")
 
 
 class KeychainUnavailable(RuntimeError):
@@ -120,5 +143,5 @@ class SecretStore:
 
     @staticmethod
     def _check_name(name: str) -> None:
-        if name not in KNOWN_SECRETS:
+        if name not in KNOWN_SECRETS and not ACCOUNT_REF.match(name):
             raise KeyError(name)

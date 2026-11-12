@@ -165,6 +165,7 @@ class PublishJob(Base):
     status: Mapped[str] = mapped_column(String(16), default="scheduled")
     platform_post_id: Mapped[str | None] = mapped_column(String(128))
     error: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[dict | None] = mapped_column(JSON)
 
 
 class AuditLog(Base):
@@ -193,3 +194,18 @@ class Spend(Base):
     service: Mapped[str] = mapped_column(String(32))
     usd: Mapped[float] = mapped_column(Float)
     details: Mapped[dict | None] = mapped_column(JSON)
+
+
+class Metric(Base):
+    """One reading of a post's numbers."""
+
+    __tablename__ = "metrics"
+    __table_args__ = (Index("ix_metrics_job_id_checked_at", "job_id", "checked_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("publish_jobs.id", ondelete="CASCADE"))
+    post_id: Mapped[str] = mapped_column(String(128))
+    checked_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    likes: Mapped[int] = mapped_column(Integer, default=0)
+    comments: Mapped[int] = mapped_column(Integer, default=0)

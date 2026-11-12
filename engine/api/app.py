@@ -23,6 +23,8 @@ from engine.db.session import current_revision, make_session_factory
 from engine.keychain import SecretStore
 from engine.monitor.service import Monitor
 from engine.policy.gate import PolicyGate
+from engine.publish.oauth import OAuthListener
+from engine.publish.service import Publisher
 from engine.recorder.service import Recorder
 from engine.render.pipeline import ClipPipeline
 from engine.settings import SettingsStore
@@ -48,6 +50,9 @@ class AppContext:
     signals: SignalService | None = None
     pipeline: ClipPipeline | None = None
     gate: PolicyGate | None = None
+    publisher: Publisher | None = None
+    oauth_flow: OAuthListener | None = None
+    open_browser: bool = True  # tests turn this off
     # Deletes a published clip's posts from the platforms; set by the publisher.
     remove_published: Callable[[int], bool] | None = None
     settings: SettingsStore = field(init=False)
@@ -63,7 +68,7 @@ class AppContext:
 
     def services(self) -> list:
         """Background services, in start order."""
-        return [self.monitor, self.recorder, self.signals, self.pipeline]
+        return [self.monitor, self.recorder, self.signals, self.pipeline, self.publisher]
 
 
 def get_ctx(request: Request) -> AppContext:
@@ -82,7 +87,7 @@ def require_token(request: Request) -> None:
 
 
 def create_app(ctx: AppContext) -> FastAPI:
-    from engine.api import clips, control, health, logs, moments, settings, streamers
+    from engine.api import accounts, clips, control, health, logs, moments, settings, streamers
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -134,4 +139,5 @@ def create_app(ctx: AppContext) -> FastAPI:
     app.include_router(moments.router)
     app.include_router(clips.router)
     app.include_router(control.router)
+    app.include_router(accounts.router)
     return app

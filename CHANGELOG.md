@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.9.0 - Phase 8: YouTube publisher (2026-11-12)
+
+### Added
+
+- Connect a YouTube channel with Google's installed-app sign-in (loopback redirect and
+  PKCE). The refresh token is stored in the OS keychain only. Disconnecting deletes it
+  and revokes the grant.
+- Approved clips are scheduled onto connected accounts: a random gap between posts
+  (20 to 90 minutes), inside a daily time window (9:00 to 23:00), up to each account's
+  daily cap (default 3). All are settings.
+- Uploads use YouTube's resumable protocol. The upload session is saved before any bytes
+  are sent, so a retry after a dropped connection, a crash or a restart continues the
+  same upload. If the session itself is gone, the channel's recent uploads are checked
+  for the clip before uploading again.
+- One post per clip per account, enforced by a unique idempotency key.
+- Everything is checked again at the moment of posting: kill switch, account, streamer
+  permission, clip status, safety verdict, and the daily cap.
+- Clips are posted only for streamers whose permission is Granted or Clipping program.
+  For anyone else, approving a clip exports the file and posts nothing.
+- A copyright claim, strike or takedown pauses the account and raises an alert. You can
+  report one from the Accounts page; a post that YouTube rejects for copyright, or that
+  disappears from the channel, is treated as one automatically (checked every 30 minutes).
+- "Stop" on a streamer now deletes their videos from YouTube.
+- Accounts page: connect, daily cap, pause and resume, report a claim, disconnect, upload
+  privacy, and the list of scheduled and finished posts with cancel and retry.
+- Views, likes and comments of recent posts are recorded in a new `metrics` table.
+- HTTP libraries no longer log request URLs, which can carry tokens or sign-in codes.
+
+### Differs from PLAN.md
+
+- Uploads default to Private, as the plan asks, but this is now a setting. Google's
+  current docs say uploads from unaudited API projects are no longer forced to private,
+  and the upload quota is 100 videos a day. Switch to Unlisted or Public on the Accounts
+  page when you choose to.
+- The sign-in asks for the `youtube.force-ssl` scope as well as `youtube.upload`. It is
+  needed to delete a video when a streamer asks you to stop, and to read post status.
+
 ## 0.8.0 - Phase 7: Policy gate and controls (2026-11-12)
 
 ### Added

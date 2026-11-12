@@ -53,6 +53,13 @@ class AppSettings(BaseModel):
     music_action: str = Field("review", pattern=r"^(review|reject)$")
     blocked_words: list[str] = Field(default_factory=list, max_length=200)
 
+    # Publishing
+    youtube_privacy: str = Field("private", pattern=r"^(private|unlisted|public)$")
+    post_gap_min_minutes: int = Field(20, ge=1, le=720)
+    post_gap_max_minutes: int = Field(90, ge=1, le=1440)
+    post_window_start_hour: int = Field(9, ge=0, le=23)
+    post_window_end_hour: int = Field(23, ge=1, le=24)
+
     # Review and export
     export_dir: str = Field("", max_length=500)  # empty: the default folder in Videos
 

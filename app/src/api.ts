@@ -176,6 +176,36 @@ export type StopResult = {
   could_not_remove: number[];
 };
 
+export type Account = {
+  id: number;
+  platform: string;
+  handle: string;
+  daily_cap: number;
+  paused: boolean;
+  pause_reason: string | null;
+};
+
+export type AccountsResponse = {
+  accounts: Account[];
+  google_keys_set: boolean;
+  connecting: boolean;
+  connect_error: string | null;
+  privacy: "private" | "unlisted" | "public";
+};
+
+export type PostJob = {
+  id: number;
+  clip_id: number;
+  title: string | null;
+  account: string;
+  platform: string;
+  status: "scheduled" | "running" | "succeeded" | "failed" | "cancelled";
+  scheduled_at: string;
+  error: string | null;
+  url: string | null;
+  removed: boolean;
+};
+
 export type Facecam = { x: number; y: number; w: number; h: number };
 
 export type ClipStatus = "pending" | "approved" | "rejected" | "published" | "removed";
@@ -248,6 +278,7 @@ export type AppSettings = {
   music_threshold: number;
   music_action: "review" | "reject";
   blocked_words: string[];
+  youtube_privacy: "private" | "unlisted" | "public";
   export_dir: string;
   [key: string]: number | string | boolean | string[];
 };
@@ -260,6 +291,17 @@ export type StreamersResponse = {
 };
 
 export const api = {
+  accounts: () => request<AccountsResponse>("GET", "/accounts"),
+  connectYouTube: () =>
+    request<{ auth_url: string; browser_opened: boolean }>("POST", "/accounts/youtube/connect"),
+  updateAccount: (id: number, patch: { daily_cap?: number; paused?: boolean }) =>
+    request<Account>("PATCH", `/accounts/${id}`, patch),
+  disconnectAccount: (id: number) => request<{ id: number }>("DELETE", `/accounts/${id}`),
+  reportStrike: (id: number, kind: "claim" | "strike" | "takedown", note: string) =>
+    request<Account>("POST", `/accounts/${id}/strike`, { kind, note }),
+  postJobs: () => request<{ jobs: PostJob[] }>("GET", "/publish/jobs"),
+  postJobAction: (id: number, action: "cancel" | "retry") =>
+    request<PostJob>("POST", `/publish/jobs/${id}/${action}`),
   control: () => request<Control>("GET", "/control"),
   setPaused: (paused: boolean) => request<Control>("POST", "/control/kill-switch", { paused }),
   setAutonomy: (level: "L1" | "L2" | "L3") => request<Control>("POST", "/control/autonomy", { level }),

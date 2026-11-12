@@ -4,10 +4,11 @@ A local-first desktop app that watches chosen Twitch and Kick streamers, finds h
 moments, renders vertical clips, and publishes them after a safety gate. The full plan is in
 [PLAN.md](PLAN.md); progress is in [CHANGELOG.md](CHANGELOG.md).
 
-**Status: MVP (Phases 0 to 5).** The app follows Twitch and Kick streamers, records a
+**Status: Phases 0 to 8.** The app follows Twitch and Kick streamers, records a
 rolling buffer while they are live, detects highlight moments, renders vertical clips with
-captions, and puts them in a review queue. Approved clips are exported to a folder for
-manual upload. Nothing is published automatically.
+captions, and puts them in a review queue. Clips are scored by Claude, pass a
+safety gate, and wait in a review queue. Approved clips are exported to a folder and, for
+streamers who gave permission, posted to your YouTube channel (private by default).
 
 ## Setup on Windows
 

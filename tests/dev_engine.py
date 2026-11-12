@@ -184,6 +184,30 @@ def main() -> None:
     ctx.signals = ScriptedDetector(
         ctx.session_factory, ctx.pipeline, float(os.environ.get("DEV_MOMENT_S", "45"))
     )
+    # A pretend YouTube: uploads "succeed" against tests/fake_youtube.py.
+    import httpx
+
+    from engine.db.models import Account, utcnow
+    from engine.publish.service import Publisher
+    from engine.publish.youtube import YouTubeClient, YouTubePublisher
+    from tests.fake_youtube import CLIENT, REFRESH, FakeYouTube
+
+    ctx.secrets.set("google_client_id", CLIENT[0])
+    ctx.secrets.set("google_client_secret", CLIENT[1])
+    ctx.secrets.set("acct_youtube_00000000000000de", REFRESH)
+    with ctx.session_factory.begin() as db:
+        if db.get(Account, 1) is None:
+            db.add(Account(platform="youtube", handle="My Clips (pretend)",
+                           keychain_ref="acct_youtube_00000000000000de"))  # fmt: skip
+    youtube = YouTubeClient(lambda: CLIENT, transport=httpx.MockTransport(FakeYouTube()))
+    ctx.publisher = Publisher(
+        ctx.session_factory,
+        ctx.settings,
+        ctx.secrets,
+        {"youtube": YouTubePublisher(youtube, utcnow)},
+    )
+    ctx.gate.on_approved(ctx.publisher.schedule_clip)
+    ctx.remove_published = ctx.publisher.remove_clip
     print(f"dev engine on http://127.0.0.1:{PORT}  token: {TOKEN}", flush=True)
     uvicorn.run(create_app(ctx), host="127.0.0.1", port=PORT, log_config=None, access_log=False)
 

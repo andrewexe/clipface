@@ -24,7 +24,7 @@ def test_health_ok(harness):
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["db"] == {"ok": True, "revision": "0002"}
+    assert body["db"] == {"ok": True, "revision": "0003"}
     assert body["keychain"]["available"] is True
 
 

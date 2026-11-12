@@ -68,3 +68,7 @@ def setup_logging(config: Config, redactor: SecretRedactor, level: int = logging
         setattr(handler, _HANDLER_TAG, True)
         root.addHandler(handler)
     root.setLevel(level)
+    # HTTP libraries log every request URL. URLs can carry secrets (an OAuth code in a
+    # query string, a bot token in a path), so only their warnings are kept.
+    for name in ("httpx", "httpcore", "httpx2", "httpcore2", "websockets", "urllib3"):
+        logging.getLogger(name).setLevel(logging.WARNING)

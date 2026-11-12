@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from engine.api.app import AppContext, get_ctx
 from engine.control.stop import stop_streamer
 from engine.db.audit import write_audit
-from engine.db.models import Streamer, StreamSession, utcnow
+from engine.db.models import Clip, Moment, Streamer, StreamSession, utcnow
 from engine.media.ffmpeg import ffmpeg_path, no_window_kwargs
 from engine.monitor.service import StreamerStatus, close_open_sessions
 from engine.monitor.urls import MAX_INPUT_LEN, InvalidStreamerUrl, StreamerRef, parse_streamer_url
@@ -264,9 +264,22 @@ def latest_frame(streamer_id: int, ctx: AppContext = Depends(get_ctx)) -> Respon
 @router.post("/streamers/{streamer_id}/stop")
 def stop(streamer_id: int, ctx: AppContext = Depends(get_ctx)) -> dict:
     """The streamer asked you to stop: disable them, drop their clips, take posts down."""
+    with ctx.session_factory() as db:
+        _get_or_404(db, streamer_id)
+        published = db.scalars(
+            select(Clip.id)
+            .join(Moment, Moment.id == Clip.moment_id)
+            .join(StreamSession, StreamSession.id == Moment.session_id)
+            .where(StreamSession.streamer_id == streamer_id, Clip.status == "published")
+        ).all()
+    # Take posts down first, outside any database transaction: it means network calls.
+    taken_down = {
+        clip_id: bool(ctx.remove_published and ctx.remove_published(clip_id))
+        for clip_id in published
+    }
     with ctx.session_factory.begin() as db:
         streamer = _get_or_404(db, streamer_id)
-        summary = stop_streamer(db, streamer, ctx.remove_published)
+        summary = stop_streamer(db, streamer, lambda clip_id: taken_down.get(clip_id, False))
         db.flush()
         view = _view(streamer, None, _status(ctx, streamer.id))
     for service in ctx.services():

@@ -25,6 +25,7 @@ from engine import __version__
 from engine.api.app import AppContext, create_app
 from engine.config import load_config
 from engine.control.spend import SpendLedger
+from engine.db.models import utcnow
 from engine.db.session import create_db_engine, run_migrations
 from engine.keychain import KeychainUnavailable, SecretStore
 from engine.logging_setup import SecretRedactor, setup_logging
@@ -32,6 +33,8 @@ from engine.monitor.platforms import Credentials, KickClient, TwitchClient
 from engine.monitor.service import Monitor
 from engine.policy.classifier import PolicyClassifier
 from engine.policy.gate import PolicyGate
+from engine.publish.service import Publisher
+from engine.publish.youtube import YouTubeClient, YouTubePublisher
 from engine.recorder.service import Recorder
 from engine.recorder.store import SegmentStore
 from engine.render.pipeline import ClipPipeline
@@ -148,6 +151,15 @@ def main(argv: list[str] | None = None) -> int:
         classifier=PolicyClassifier(_secret(secrets, "anthropic_api_key"), ctx.settings, ledger),
     )
     ctx.pipeline.add_listener(ctx.gate.review)
+    youtube = YouTubeClient(_credentials(secrets, "google_client_id", "google_client_secret"))
+    ctx.publisher = Publisher(
+        ctx.session_factory,
+        ctx.settings,
+        secrets,
+        {"youtube": YouTubePublisher(youtube, utcnow)},
+    )
+    ctx.gate.on_approved(ctx.publisher.schedule_clip)
+    ctx.remove_published = ctx.publisher.remove_clip
     app = create_app(ctx)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
