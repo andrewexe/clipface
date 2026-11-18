@@ -315,6 +315,49 @@ function gb(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
+const QUALITIES: [string, string][] = [
+  ["720p60,720p,best", "720p (recommended): half the bandwidth and disk of 1080p"],
+  ["1080p60,1080p,best", "1080p: sharper, needs about 8 Mbps per streamer"],
+  ["480p,best", "480p: for a slow connection"],
+];
+
+function QualityPicker() {
+  const [quality, setQuality] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .appSettings()
+      .then((s) => setQuality(s.stream_quality))
+      .catch(() => setQuality(null));
+  }, []);
+  if (quality === null) return null;
+  const known = QUALITIES.some(([value]) => value === quality);
+  return (
+    <div className="field">
+      <label htmlFor="stream-quality">Recording quality</label>
+      <select
+        id="stream-quality"
+        value={quality}
+        onChange={async (event) => {
+          const saved = await api.updateAppSettings({ stream_quality: event.target.value });
+          setQuality(saved.stream_quality);
+        }}
+      >
+        {!known && <option value={quality}>{quality}</option>}
+        {QUALITIES.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+      <span className="muted small">
+        If the engine log shows "Download of segment failed" or "Sequence gap", your connection
+        can't keep up: pick a lower quality or follow fewer streamers at once. Applies the next
+        time a stream starts recording.
+      </span>
+    </div>
+  );
+}
+
 function StorageCard() {
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -337,6 +380,7 @@ function StorageCard() {
   return (
     <div className="card">
       <h3>Storage</h3>
+      <QualityPicker />
       <table className="table">
         <tbody>
           {rows.map(([label, bytes, help]) => (

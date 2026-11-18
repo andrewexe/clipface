@@ -60,6 +60,11 @@ class StreamlinkSource:
 
         session = Streamlink()
         session.set_option("stream-timeout", 30)
+        # Fetch several segments at once and retry failed ones, so a slow or flaky
+        # connection falls behind (and skips footage) less often.
+        session.set_option("stream-segment-threads", 3)
+        session.set_option("stream-segment-attempts", 5)
+        session.set_option("stream-segment-timeout", 20)
         # Skip embedded ad breaks so ads never end up inside a clip.
         options = Options({"disable-ads": True, "low-latency": True})
         try:

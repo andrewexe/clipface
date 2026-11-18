@@ -87,23 +87,48 @@ class SegmentStore:
 
         result: list[Segment] = []
         for run in sorted(runs):
-            entries = runs[run]
-            # Data arrives in bursts, so a file can be closed late but never early. The
-            # smallest (closed-at minus stream position) nearby is the best clock offset.
-            offsets = [files[name].st_mtime - c_end for name, _s, c_end in entries]
-            for index, (name, c_start, c_end) in enumerate(entries):
-                lo, hi = max(0, index - _OFFSET_WINDOW), index + _OFFSET_WINDOW + 1
-                offset = min(offsets[lo:hi])
-                result.append(
-                    Segment(
-                        path=folder / name,
-                        start=offset + c_start,
-                        end=offset + c_end,
-                        size=files[name].st_size,
+            for piece in self._pieces(runs[run]):
+                # Data arrives in bursts, so a file can be closed late but never early.
+                # The smallest (closed-at minus stream position) nearby is the best clock
+                # offset. Only neighbours in the same piece count: across a jump in the
+                # stream's own clock, the offsets are not comparable.
+                offsets = [files[name].st_mtime - c_end for name, _s, c_end in piece]
+                for index, (name, c_start, c_end) in enumerate(piece):
+                    lo, hi = max(0, index - _OFFSET_WINDOW), index + _OFFSET_WINDOW + 1
+                    offset = min(offsets[lo:hi])
+                    result.append(
+                        Segment(
+                            path=folder / name,
+                            start=offset + c_start,
+                            end=offset + c_end,
+                            size=files[name].st_size,
+                        )
                     )
-                )
         result.sort(key=lambda seg: seg.start)
         return result
+
+    def _pieces(
+        self, entries: list[tuple[str, float, float]]
+    ) -> list[list[tuple[str, float, float]]]:
+        """Split a run where the stream's own clock jumps.
+
+        When the downloader falls behind, Streamlink skips part of the stream ("Sequence
+        gap"). The stream's timestamps then leap forward (or, after some glitches, back),
+        and one segment claims to span the whole gap. Such a segment is given its normal
+        length, and a new piece starts with it."""
+        longest = max(3 * self.segment_seconds, self.segment_seconds + 5)
+        pieces: list[list[tuple[str, float, float]]] = []
+        previous_end: float | None = None
+        for name, c_start, c_end in entries:
+            jumped = previous_end is not None and abs(c_start - previous_end) > 1.0
+            stretched = c_end - c_start > longest
+            if stretched:
+                c_start = c_end - self.segment_seconds
+            if not pieces or jumped or stretched:
+                pieces.append([])
+            pieces[-1].append((name, c_start, c_end))
+            previous_end = c_end
+        return pieces
 
     @staticmethod
     def _listed(folder: Path) -> list[tuple[str, float, float]]:

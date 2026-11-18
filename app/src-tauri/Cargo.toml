@@ -1,6 +1,6 @@
 [package]
 name = "clipper"
-version = "0.13.2"
+version = "0.13.3"
 description = "Stream Clipper desktop app"
 edition = "2021"
 

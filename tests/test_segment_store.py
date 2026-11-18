@@ -186,3 +186,44 @@ def test_empty_and_missing_folders(store):
     assert store.segments(42) == [] and store.session_ids() == [] and store.total_bytes() == 0
     result = store.prune(T0, active={1}, keep_seconds=1, ended_retention_seconds=1, cap_bytes=0)
     assert result.total_bytes == 0
+
+
+def write_run(store, session_id, rows, run="300"):
+    """rows: (stream start, stream end, clock time the file was closed)."""
+    folder = store.session_dir(session_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for index, (c_start, c_end, closed) in enumerate(rows):
+        path = folder / f"{run}_{index:06d}.ts"
+        path.write_bytes(b"x" * 100)
+        os.utime(path, (closed, closed))
+        lines.append(f"{path.name},{c_start:.6f},{c_end:.6f}")
+    (folder / f"{run}.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_a_skip_in_the_stream_does_not_move_earlier_footage_back_in_time(store):
+    """What a 'Sequence gap' does: the downloader skips three minutes, so the stream's
+    clock leaps 180 s while the wall clock moves 10 s. Footage on both sides must keep
+    its real time, so moments find it."""
+    rows = [(i * 10, (i + 1) * 10, T0 + (i + 1) * 10) for i in range(12)]  # 0-120 s
+    rows.append((120, 310, T0 + 130))  # one segment "spans" the 180 s jump
+    rows += [(310 + i * 10, 320 + i * 10, T0 + 140 + i * 10) for i in range(12)]
+    write_run(store, 1, rows)
+    segs = store.segments(1)
+    assert len(segs) == 25
+    # Before the skip: exactly where they were recorded, not 180 s too early.
+    assert [round(s.end - T0) for s in segs[:12]] == [10 * (i + 1) for i in range(12)]
+    # The jump segment has its normal length, ending when it was closed.
+    assert round(segs[12].end - T0) == 130 and round(segs[12].duration) == 10
+    # After the skip, also on time; and the newest ends at "now".
+    assert round(segs[-1].end - T0) == 250
+    assert store.window(1, T0 + 200, T0 + 230)  # a moment just now finds footage
+    assert store.window(1, T0 + 60, T0 + 90)  # and one from before the skip too
+
+
+def test_a_backwards_glitch_also_starts_a_new_piece(store):
+    rows = [(i * 10, (i + 1) * 10, T0 + (i + 1) * 10) for i in range(6)]
+    rows += [(5 + i * 10, 15 + i * 10, T0 + 70 + i * 10) for i in range(6)]  # clock went back
+    write_run(store, 1, rows)
+    ends = [round(s.end - T0) for s in store.segments(1)]
+    assert ends == [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]

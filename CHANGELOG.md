@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.13.3 - Recording on a busy connection (2026-11-18)
+
+### Fixed
+
+- When the stream download fell behind and Streamlink skipped part of the stream
+  ("Sequence gap" in the engine log), footage recorded before the skip was placed minutes
+  too early in time. Moments then found "no footage of this moment was recorded" and were
+  dropped. The timeline now restarts its clock at each skip, so footage on both sides
+  keeps its real time.
+
+### Changed
+
+- Streams are recorded at 720p instead of the best quality on offer: about half the
+  bandwidth and disk, and plenty for a 1080x1920 vertical clip. Settings files still on
+  "best" move to 720p once. A Recording quality picker is in Settings, under Storage.
+- Stream downloads fetch three segments at a time and retry failed ones, so a slow or
+  flaky connection falls behind less often.
+
 ## 0.13.2 - Sonnet 5.5 and model fixes (2026-11-18)
 
 ### Changed

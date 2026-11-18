@@ -64,7 +64,7 @@ def test_old_files_with_the_old_default_model_move_to_sonnet(tmp_path):
     path.write_text(json.dumps({"scoring_model": "claude-opus-5-5", "buffer_minutes": 25}))
     settings = SettingsStore(path).get()
     assert settings.scoring_model == "claude-sonnet-5-5" and settings.buffer_minutes == 25
-    assert settings.settings_version == 2
+    assert settings.settings_version == 3
 
 
 def test_a_model_chosen_after_the_migration_is_kept(tmp_path):
@@ -86,3 +86,13 @@ def test_model_picker_refuses_unsupported_models(harness):
         "/settings/app", json={"scoring_model": "claude-sonnet-4-6"}, headers=harness.auth
     )
     assert bad.status_code == 422 and "not supported" in bad.json()["detail"]
+
+
+def test_old_files_recording_at_best_move_to_720p(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"stream_quality": "best", "settings_version": 2}))
+    assert SettingsStore(path).get().stream_quality == "720p60,720p,best"
+    path.write_text(json.dumps({"stream_quality": "1080p60,best", "settings_version": 2}))
+    assert SettingsStore(path).get().stream_quality == "1080p60,best"  # a real choice stays
+    path.write_text(json.dumps({"stream_quality": "best", "settings_version": 3}))
+    assert SettingsStore(path).get().stream_quality == "best"  # chosen after the change

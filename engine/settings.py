@@ -21,7 +21,9 @@ class AppSettings(BaseModel):
     segment_seconds: int = Field(10, ge=2, le=60)
     disk_cap_gb: float = Field(50.0, ge=1, le=4000)
     raw_retention_hours: float = Field(6.0, ge=0.5, le=72)
-    stream_quality: str = Field("best", pattern=r"^[a-z0-9_,]{1,64}$")
+    # 720p is plenty for a 1080x1920 vertical clip, and needs about half the bandwidth and
+    # disk of 1080p60. The first name the stream offers is used.
+    stream_quality: str = Field("720p60,720p,best", pattern=r"^[a-z0-9_,]{1,64}$")
 
     # Highlight detection
     detect_z_threshold: float = Field(3.0, ge=1.5, le=12)
@@ -42,7 +44,7 @@ class AppSettings(BaseModel):
     # Claude scoring
     scoring: bool = True
     scoring_model: str = Field("claude-sonnet-5-5", pattern=r"^claude-[a-z0-9-]{3,60}$")
-    settings_version: int = 2
+    settings_version: int = 3
     score_min: float = Field(0.4, ge=0, le=1)  # moments scored below this are not rendered
     anthropic_daily_cap_usd: float = Field(5.0, ge=0, le=1000)
 
@@ -75,7 +77,7 @@ class AppSettings(BaseModel):
     export_dir: str = Field("", max_length=500)  # empty: the default folder in Videos
 
 
-SETTINGS_VERSION = 2
+SETTINGS_VERSION = 3
 
 
 def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
@@ -86,6 +88,10 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
         # default, Opus 5.5, which nobody chose: move them to the new default.
         if raw.get("scoring_model") == "claude-opus-5-5":
             raw["scoring_model"] = "claude-sonnet-5-5"
+    if version < 3:
+        # Version 3 records at 720p instead of the stream's best quality.
+        if raw.get("stream_quality") == "best":
+            raw["stream_quality"] = "720p60,720p,best"
     raw["settings_version"] = SETTINGS_VERSION
     return raw
 
