@@ -76,7 +76,11 @@ class PlatformPublisher(Protocol):
 
     def remove(self, token: str, post_id: str) -> bool: ...
 
-    def states(self, token: str, post_ids: list[str]) -> dict[str, dict]: ...
+    def states(self, token: str, post_ids: list[str]) -> dict[str, dict] | None:
+        """Each post the platform still has, by id; a post left out was removed. None
+        when the platform cannot report on posts at all (TikTok inbox drafts), so no
+        post is taken for removed."""
+        ...
 
     def url(self, post_id: str) -> str: ...
 
@@ -545,6 +549,8 @@ class Publisher:
             except (PublishError, KeychainUnavailable) as exc:
                 log.info("could not check posts of account %s: %s", account_id, exc)
                 continue
+            if states is None:
+                continue  # this platform cannot say what happened to a post
             for job_id, post_id, _state in posts:
                 seen = states.get(post_id)
                 problem = None

@@ -302,8 +302,10 @@ class TikTokPublisher:
     def remove(self, token: str, post_id: str) -> bool:
         return False  # drafts and posts can only be deleted in the TikTok app
 
-    def states(self, token: str, post_ids: list[str]) -> dict[str, dict]:
-        return {}  # nothing to read back: what happens to a draft is up to its owner
+    def states(self, token: str, post_ids: list[str]) -> None:
+        # Nothing to read back: what happens to a draft is up to its owner. None (not
+        # {}) so the publisher does not take every draft for a removed post.
+        return None
 
     @staticmethod
     def url(post_id: str) -> str:

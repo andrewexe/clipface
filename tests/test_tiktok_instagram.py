@@ -370,6 +370,19 @@ def test_tiktok_and_instagram_posts_cannot_be_removed_by_the_app(rig):
     assert rig.publisher.remove_clip(1) is False  # reported, so the owner removes it by hand
 
 
+def test_a_delivered_tiktok_draft_is_not_taken_for_a_removed_post(rig):
+    # TikTok cannot report on inbox drafts; checking posts must not pause the account.
+    rig.add_account("tiktok")
+    rig.publisher.schedule_clip(1)
+    rig.run(times=3, minutes=6)
+    assert rig.job().status == "succeeded"
+    rig.publisher.check_posts()
+    with rig.factory() as db:
+        account = db.get(Account, 1)
+        assert account.paused is False and account.pause_reason is None
+    assert rig.alerts == [] and "strike" not in rig.job().state
+
+
 # -- Instagram ----------------------------------------------------------------------------
 
 
