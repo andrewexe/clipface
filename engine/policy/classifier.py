@@ -20,7 +20,7 @@ from pydantic import BaseModel, ValidationError
 from engine.control.spend import SpendCapReached, SpendLedger
 from engine.media.ffmpeg import ffmpeg_path, no_window_kwargs
 from engine.policy.text import Finding
-from engine.scorer.claude import call_cost
+from engine.scorer.claude import call_cost, fallback_args, unsupported
 from engine.settings import SettingsStore
 
 log = logging.getLogger(__name__)
@@ -164,6 +164,9 @@ class PolicyClassifier:
             self._ledger.check(SERVICE, settings.anthropic_daily_cap_usd, _ESTIMATED_CALL_USD)
         except SpendCapReached:
             return unchecked("today's Anthropic budget is used up")
+        problem = unsupported(settings.scoring_model)
+        if problem:
+            return unchecked(problem)
         frames = extract_frames(video, duration)
         if not frames:
             return unchecked("no frames could be read from the clip")
@@ -194,8 +197,7 @@ class PolicyClassifier:
                 messages=[{"role": "user", "content": content}],
                 output_format=PolicyReport,
                 output_config={"effort": "medium"},
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
+                **fallback_args(model),
             )
         except anthropic.AuthenticationError:
             return unchecked("Anthropic rejected the API key")

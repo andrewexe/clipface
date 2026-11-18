@@ -41,8 +41,38 @@ PRICES: dict[str, tuple[float, float]] = {
     "claude-sonnet-5-5": (2.0, 10.0),
     "claude-haiku-5-5": (0.10, 0.50),
     "claude-fable-5-2": (8.0, 40.0),
+    "claude-fable-5-1": (10.0, 50.0),
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5": (2.0, 10.0),
 }
 _FALLBACK_PRICE = (10.0, 50.0)
+
+# Models that accept the server-side refusal fallback ("fallbacks": "default"). Others,
+# Haiku 5.5 among them, reject the parameter, so it is only sent to these.
+FALLBACK_MODELS = {
+    "claude-fable-5-2",
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-opus-5",
+    "claude-sonnet-5-5",
+}
+
+
+# Models that support everything Clipper sends: structured output and the effort setting.
+SUPPORTED_MODELS = FALLBACK_MODELS | {"claude-haiku-5-5", "claude-sonnet-5"}
+
+
+def unsupported(model: str) -> str | None:
+    if model in SUPPORTED_MODELS:
+        return None
+    return f"{model} is not supported; use claude-haiku-5-5, claude-sonnet-5-5 or claude-opus-5-5"
+
+
+def fallback_args(model: str) -> dict:
+    if model in FALLBACK_MODELS:
+        return {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+    return {}
+
 
 SYSTEM_PROMPT = """\
 You score moments from live streams for a short-form clip channel. For each moment you \
@@ -187,6 +217,10 @@ class ClaudeScorer:
         if not key:
             draft.notes["scoring"] = "no Anthropic API key is set"
             return
+        problem = unsupported(settings.scoring_model)
+        if problem:
+            draft.notes["scoring"] = problem
+            return
         try:
             self._ledger.check(SERVICE, settings.anthropic_daily_cap_usd, _ESTIMATED_CALL_USD)
         except SpendCapReached:
@@ -223,8 +257,7 @@ class ClaudeScorer:
                 output_format=ClipDecision,
                 output_config={"effort": "medium"},
                 # If a safety classifier declines, let the API route to its fallback model.
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
+                **fallback_args(model),
             )
         except (ValidationError, ValueError) as exc:
             raise _Unusable(

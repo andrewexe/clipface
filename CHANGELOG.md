@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.1 - Model fixes (2026-11-18)
+
+### Fixed
+
+- The refusal fallback is only requested from models that accept it. Before, choosing
+  `claude-haiku-5-5` as the scoring model would have left every clip unscored.
+- An unsupported scoring model (for example `claude-sonnet-4-6` or `claude-haiku-4-5`,
+  which lack structured output or the effort setting) is refused with a clear note on
+  each clip, instead of failing as "the Anthropic API was unavailable". Supported:
+  `claude-opus-5-5` (default), `claude-sonnet-5-5`, `claude-haiku-5-5`, and the Fable,
+  Opus 5 and Sonnet 5 models.
+
 ## 0.13.0 - Shorter clips, less disk (2026-11-18)
 
 ### Changed

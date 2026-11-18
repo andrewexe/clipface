@@ -550,3 +550,10 @@ def test_l3_still_needs_the_streamers_permission(env, status):
     with env.factory.begin() as db:
         db.get(Streamer, 1).permission_status = status
     assert env.gate.review(1) == "review"
+
+
+def test_unsupported_model_means_the_content_check_did_not_run(env):
+    env.settings.update({"scoring_model": "claude-sonnet-4-6"})
+    findings = env.classifier.check(env.clips.clean, 8.0, "hi")
+    assert [(f.check, f.verdict) for f in findings] == [("not_checked", "flag")]
+    assert "not supported" in findings[0].detail and env.state.client.calls == []

@@ -288,3 +288,26 @@ def test_call_cost_uses_model_prices_and_is_cautious_about_unknown_models():
     cached = SimpleNamespace(input_tokens=0, output_tokens=0,
                              cache_creation_input_tokens=1_000_000, cache_read_input_tokens=1_000_000)  # fmt: skip
     assert call_cost("claude-opus-5-5", cached) == pytest.approx(4 * 1.25 + 4 * 0.1)
+
+
+@pytest.mark.parametrize(
+    ("model", "sends_fallbacks"),
+    [("claude-opus-5-5", True), ("claude-sonnet-5-5", True), ("claude-fable-5-2", True),
+     ("claude-haiku-5-5", False), ("claude-sonnet-5", False)],
+)  # fmt: skip
+def test_refusal_fallback_is_only_sent_to_models_that_accept_it(rig, model, sends_fallbacks):
+    rig.settings.update({"scoring_model": model})
+    rig.state.client = FakeClient(reply(decision()))
+    rig.scorer.score(draft())
+    (call,) = rig.state.client.calls
+    assert call["model"] == model
+    assert ("fallbacks" in call) is sends_fallbacks and ("betas" in call) is sends_fallbacks
+
+
+@pytest.mark.parametrize("model", ["claude-sonnet-4-6", "claude-haiku-4-5", "claude-made-up-9"])
+def test_unsupported_models_are_refused_with_a_clear_note(rig, model):
+    rig.settings.update({"scoring_model": model})
+    d = draft()
+    rig.scorer.score(d)
+    assert rig.state.client.calls == [] and d.score is None
+    assert "not supported" in d.notes["scoring"] and "claude-haiku-5-5" in d.notes["scoring"]
