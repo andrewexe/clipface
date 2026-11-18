@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.5 - Stay awake while recording (2026-11-18)
+
+### Added
+
+- While a live stream is recording, Clipper keeps the computer from going to sleep (the
+  screen can still turn off). Sleep stopped recording, and on waking every post and
+  check failed with "could not reach TikTok/YouTube (ConnectError)" until Wi-Fi was back.
+  When nothing is live the computer sleeps as usual. Switch it off in Settings, under
+  Storage: "Keep the computer awake while recording".
+
 ## 0.13.4 - Less disk, and TikTok fixes (2026-11-18)
 
 ### Changed

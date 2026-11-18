@@ -25,6 +25,7 @@ from engine.db.audit import write_audit
 from engine.db.models import Moment, Streamer, StreamSession
 from engine.media.ffmpeg import ffmpeg_path, no_window_kwargs
 from engine.monitor.urls import StreamerRef
+from engine.power import KeepAwake
 from engine.recorder.store import PruneResult, SegmentStore
 from engine.settings import SettingsStore
 
@@ -205,8 +206,10 @@ class Recorder:
         settings: SettingsStore,
         source: StreamSource | None = None,
         clock: Callable[[], float] = time.time,
+        keep_awake: KeepAwake | None = None,
     ) -> None:
         self._session_factory = session_factory
+        self._keep_awake = keep_awake or KeepAwake()
         self.store = store
         self._settings = settings
         self._source = source or StreamlinkSource()
@@ -340,6 +343,9 @@ class Recorder:
                 worker.start()
                 started.append(session_id)
             active = set(self._workers)
+            recording = any(worker.is_alive() for worker in self._workers.values())
+
+        self._keep_awake.tick(recording and settings.keep_awake_while_recording)
 
         for worker in to_stop:
             worker.stop()

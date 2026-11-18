@@ -27,6 +27,9 @@ class AppSettings(BaseModel):
     # 720p is plenty for a 1080x1920 vertical clip, and needs about half the bandwidth and
     # disk of 1080p60. The first name the stream offers is used.
     stream_quality: str = Field("720p60,720p,best", pattern=r"^[a-z0-9_,]{1,64}$")
+    # Stop Windows going to sleep while a live stream is recording (the screen may still
+    # turn off). Sleep stops recording and posting, and they fail until Wi-Fi is back.
+    keep_awake_while_recording: bool = True
 
     # Highlight detection
     detect_z_threshold: float = Field(3.0, ge=1.5, le=12)

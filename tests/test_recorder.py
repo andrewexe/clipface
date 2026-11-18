@@ -8,6 +8,7 @@ import pytest
 
 from engine.db.models import AuditLog, Streamer, StreamSession, utcnow
 from engine.db.session import create_db_engine, make_session_factory, run_migrations
+from engine.power import KeepAwake
 from engine.recorder.service import Recorder
 from engine.recorder.store import SegmentStore
 from engine.settings import SettingsStore
@@ -23,7 +24,10 @@ def rig(tmp_path):
     settings.update({"segment_seconds": 2})
     source = TestPatternSource()
     store = SegmentStore(tmp_path / "buffer", segment_seconds=2)
-    recorder = Recorder(factory, store, settings, source=source)
+    nudges: list[float] = []
+    ticks = iter(range(0, 10**6, 61))  # each check is a minute after the last
+    keep_awake = KeepAwake(nudge=lambda: nudges.append(1) or True, clock=lambda: next(ticks))
+    recorder = Recorder(factory, store, settings, source=source, keep_awake=keep_awake)
     with factory.begin() as db:
         db.add(Streamer(platform="twitch", username="shroud"))
         db.flush()
@@ -38,6 +42,7 @@ def rig(tmp_path):
             store=store,
             recorder=recorder,
             tmp=tmp_path,
+            nudges=nudges,
         ),
     )
     recorder.stop_all()
@@ -153,3 +158,19 @@ def test_disk_cap_is_audited_once(rig):
     with rig.factory() as db:
         actions = [a.action for a in db.query(AuditLog)]
     assert actions.count("recorder.disk_cap") == 1
+
+
+def test_keeps_the_computer_awake_only_while_recording(rig):
+    rig.recorder.reconcile()
+    assert rig.recorder.is_recording(1) and len(rig.nudges) == 1
+    rig.recorder.reconcile()
+    assert len(rig.nudges) == 2
+
+    rig.settings.update({"keep_awake_while_recording": False})
+    rig.recorder.reconcile()
+    assert len(rig.nudges) == 2  # switched off: the computer may sleep
+
+    rig.settings.update({"keep_awake_while_recording": True})
+    end_session(rig)
+    rig.recorder.reconcile()
+    assert not rig.recorder.is_recording(1) and len(rig.nudges) == 2  # nothing live

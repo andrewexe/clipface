@@ -293,6 +293,7 @@ export type AppSettings = {
   raw_retention_hours: number;
   pending_expiry_hours: number;
   stream_quality: string;
+  keep_awake_while_recording: boolean;
   detect_z_threshold: number;
   detect_cooldown_s: number;
   detect_audio: boolean;

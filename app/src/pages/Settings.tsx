@@ -367,6 +367,39 @@ function QualityPicker() {
   );
 }
 
+function KeepAwakeToggle() {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    api
+      .appSettings()
+      .then((s) => setOn(s.keep_awake_while_recording))
+      .catch(() => setOn(null));
+  }, []);
+  if (on === null) return null;
+  return (
+    <div className="field">
+      <label>
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={async (event) => {
+            const saved = await api.updateAppSettings({
+              keep_awake_while_recording: event.target.checked,
+            });
+            setOn(saved.keep_awake_while_recording);
+          }}
+        />{" "}
+        Keep the computer awake while recording
+      </label>
+      <span className="muted small">
+        While a live stream is recording, the computer will not go to sleep (the screen can still
+        turn off). Sleep stops recording and posting until you come back. When nothing is live, it
+        sleeps as usual.
+      </span>
+    </div>
+  );
+}
+
 function StorageCard() {
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -390,6 +423,7 @@ function StorageCard() {
     <div className="card">
       <h3>Storage</h3>
       <QualityPicker />
+      <KeepAwakeToggle />
       <table className="table">
         <tbody>
           {rows.map(([label, bytes, help]) => (
