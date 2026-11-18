@@ -91,7 +91,7 @@ Do not put keys in `.env` files, code, or chat.
 | Transcription (Deepgram) | Captions | console.deepgram.com |
 | Anthropic | Scoring and the content safety check | console.anthropic.com; set a monthly limit |
 | Google OAuth client ID and secret | YouTube posting | Google Cloud project with YouTube Data API, OAuth client of type "Desktop app" |
-| TikTok client key and secret | TikTok drafts | developers.tiktok.com, app with Login Kit (redirect `http://127.0.0.1:*/callback/`) and Content Posting API |
+| TikTok client key and secret | TikTok drafts | developers.tiktok.com, app with Login Kit (Desktop redirect `http://127.0.0.1:47615/callback/`) and Content Posting API |
 | Instagram access token | Instagram Reels | Meta app with Facebook Login for Business and `instagram_content_publish` |
 | Telegram bot token | Phone approvals | message @BotFather in Telegram |
 

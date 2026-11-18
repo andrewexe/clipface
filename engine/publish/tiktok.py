@@ -41,6 +41,10 @@ log = logging.getLogger(__name__)
 AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
 API = "https://open.tiktokapis.com"
 SCOPE = "video.upload"
+# TikTok matches the Desktop redirect URI exactly, port included, so the sign-in
+# listener uses this fixed port. Register http://127.0.0.1:47615/callback/ in the app.
+REDIRECT_PORT = 47615
+REDIRECT_PATH = "/callback/"
 SINGLE_CHUNK_MAX = 64 * 1024 * 1024
 CHUNK = 10 * 1024 * 1024
 UPLOAD_URL_LIFETIME = timedelta(minutes=55)  # TikTok: valid for one hour

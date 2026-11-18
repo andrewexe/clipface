@@ -306,8 +306,14 @@ def test_tiktok_sign_in_uses_the_callback_path_and_stores_the_token(more_platfor
     response = call(app, "POST", "/accounts/tiktok/connect")
     query = parse_qs(urlsplit(response.json()["auth_url"]).query)
     redirect_uri = query["redirect_uri"][0]
-    assert redirect_uri.startswith("http://127.0.0.1:") and redirect_uri.endswith("/callback/")
+    # TikTok matches the registered Desktop redirect URI exactly, port included.
+    assert redirect_uri == "http://127.0.0.1:47615/callback/"
     assert query["scope"] == ["video.upload"]
+    # Starting again (a second click) must free the fixed port for the new listener.
+    response = call(app, "POST", "/accounts/tiktok/connect")
+    assert response.status_code == 200
+    query = parse_qs(urlsplit(response.json()["auth_url"]).query)
+    assert query["redirect_uri"] == [redirect_uri]
     app.tt.challenge = query["code_challenge"][0]
 
     assert (

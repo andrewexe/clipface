@@ -115,12 +115,13 @@ def _save_account(ctx: AppContext, platform: str, handle: str, token: str) -> st
 
 
 def _begin_sign_in(
-    ctx: AppContext, platform: str, state: str, path: str, make_url, exchange
+    ctx: AppContext, platform: str, state: str, path: str, make_url, exchange, port: int = 0
 ) -> dict:
     """Start a loopback listener, send the browser to the platform, and finish the
     sign-in when the platform redirects back with a code."""
     if ctx.oauth_flow is not None:
         ctx.oauth_flow.cancel()
+        ctx.oauth_flow.wait_closed()  # frees a fixed port for the new listener
 
     def finish(code: str, redirect_uri: str) -> str | None:
         try:
@@ -129,7 +130,13 @@ def _begin_sign_in(
             return str(exc)
         return _save_account(ctx, platform, handle, token)
 
-    flow = OAuthListener(state, finish, path=path)
+    try:
+        flow = OAuthListener(state, finish, path=path, port=port)
+    except OSError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Port {port} is in use by another program; close it and try again.",
+        ) from None
     flow.start()
     ctx.oauth_flow = flow
     url = make_url(flow.redirect_uri)
@@ -182,9 +189,10 @@ def connect_tiktok(ctx: AppContext = Depends(get_ctx)) -> dict:
         ctx,
         "tiktok",
         state,
-        "/callback/",
+        tiktok.REDIRECT_PATH,
         lambda uri: tiktok.authorization_url(keys[0], uri, challenge, state),
         exchange,
+        port=tiktok.REDIRECT_PORT,
     )
 
 

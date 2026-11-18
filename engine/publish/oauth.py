@@ -27,13 +27,19 @@ padding-top:15vh">
 
 class OAuthListener:
     def __init__(
-        self, state: str, on_code: Callable[[str, str], str | None], path: str = ""
+        self,
+        state: str,
+        on_code: Callable[[str, str], str | None],
+        path: str = "",
+        port: int = 0,
     ) -> None:
         """`on_code(code, redirect_uri)` finishes the sign-in and returns an error message
-        to show, or None on success."""
+        to show, or None on success. `port` 0 picks a free port (Google accepts any
+        loopback port); platforms that match the registered redirect URI exactly, such
+        as TikTok, need a fixed one. Raises OSError if that port is taken."""
         self._state = state
         self._on_code = on_code
-        self._server = HTTPServer(("127.0.0.1", 0), self._handler())
+        self._server = HTTPServer(("127.0.0.1", port), self._handler())
         self._server.timeout = 1.0
         self._path = path  # some platforms want a fixed path, e.g. "/callback/"
         self.redirect_uri = f"http://127.0.0.1:{self._server.server_address[1]}{path}"
@@ -47,6 +53,12 @@ class OAuthListener:
     def cancel(self) -> None:
         self.error = self.error or "cancelled"
         self.finished.set()
+
+    def wait_closed(self, timeout: float = 3.0) -> None:
+        """Wait until the listener has let go of its port (at most about one `timeout`
+        tick after `cancel`), so a new sign-in can reuse a fixed port."""
+        if self._thread.is_alive():
+            self._thread.join(timeout)
 
     def _serve(self) -> None:
         waited = 0.0
