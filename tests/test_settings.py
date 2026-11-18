@@ -57,3 +57,32 @@ def test_safety_switches_cannot_be_changed_through_general_settings(harness):
     settings = harness.ctx.settings.get()
     assert settings.autonomy_level == "L1" and settings.telegram_chat_id == 0
     assert settings.publishing_paused is False
+
+
+def test_old_files_with_the_old_default_model_move_to_sonnet(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"scoring_model": "claude-opus-5-5", "buffer_minutes": 25}))
+    settings = SettingsStore(path).get()
+    assert settings.scoring_model == "claude-sonnet-5-5" and settings.buffer_minutes == 25
+    assert settings.settings_version == 2
+
+
+def test_a_model_chosen_after_the_migration_is_kept(tmp_path):
+    path = tmp_path / "s.json"
+    store = SettingsStore(path)
+    assert store.get().scoring_model == "claude-sonnet-5-5"  # the new default
+    store.update({"scoring_model": "claude-opus-5-5"})
+    assert SettingsStore(path).get().scoring_model == "claude-opus-5-5"
+    path.write_text(json.dumps({"scoring_model": "claude-haiku-5-5"}))
+    assert SettingsStore(path).get().scoring_model == "claude-haiku-5-5"
+
+
+def test_model_picker_refuses_unsupported_models(harness):
+    ok = harness.client.patch(
+        "/settings/app", json={"scoring_model": "claude-haiku-5-5"}, headers=harness.auth
+    )
+    assert ok.status_code == 200 and ok.json()["scoring_model"] == "claude-haiku-5-5"
+    bad = harness.client.patch(
+        "/settings/app", json={"scoring_model": "claude-sonnet-4-6"}, headers=harness.auth
+    )
+    assert bad.status_code == 422 and "not supported" in bad.json()["detail"]

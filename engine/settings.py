@@ -41,7 +41,8 @@ class AppSettings(BaseModel):
 
     # Claude scoring
     scoring: bool = True
-    scoring_model: str = Field("claude-opus-5-5", pattern=r"^claude-[a-z0-9-]{3,60}$")
+    scoring_model: str = Field("claude-sonnet-5-5", pattern=r"^claude-[a-z0-9-]{3,60}$")
+    settings_version: int = 2
     score_min: float = Field(0.4, ge=0, le=1)  # moments scored below this are not rendered
     anthropic_daily_cap_usd: float = Field(5.0, ge=0, le=1000)
 
@@ -74,6 +75,21 @@ class AppSettings(BaseModel):
     export_dir: str = Field("", max_length=500)  # empty: the default folder in Videos
 
 
+SETTINGS_VERSION = 2
+
+
+def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
+    """Bring a settings file from an older version up to date."""
+    version = raw.get("settings_version", 1)
+    if version < 2:
+        # Version 2 made Sonnet 5.5 the scoring model. Files saved before it hold the old
+        # default, Opus 5.5, which nobody chose: move them to the new default.
+        if raw.get("scoring_model") == "claude-opus-5-5":
+            raw["scoring_model"] = "claude-sonnet-5-5"
+    raw["settings_version"] = SETTINGS_VERSION
+    return raw
+
+
 class SettingsStore:
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -84,7 +100,8 @@ class SettingsStore:
         if not self._path.exists():
             return AppSettings()
         try:
-            return AppSettings.model_validate(json.loads(self._path.read_text(encoding="utf-8")))
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
+            return AppSettings.model_validate(_migrate(raw) if isinstance(raw, dict) else raw)
         except (OSError, ValueError, ValidationError) as exc:
             # A damaged file must not stop the app; fall back to safe defaults.
             log.warning("settings file unreadable (%s); using defaults", type(exc).__name__)

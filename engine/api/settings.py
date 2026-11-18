@@ -97,6 +97,7 @@ _HAS_ITS_OWN_CONTROL = {
     "telegram_chat_id",
     "mcp_enabled",
     "mcp_can_approve",
+    "settings_version",
 }
 
 
@@ -116,6 +117,12 @@ def update_app_settings(patch: dict, ctx: AppContext = Depends(get_ctx)) -> dict
         raise HTTPException(
             status_code=422, detail=f"{guarded[0]} is changed through its own control, not here"
         )
+    if "scoring_model" in patch:
+        from engine.scorer.claude import unsupported
+
+        problem = unsupported(str(patch["scoring_model"]))
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
     try:
         settings, changes = ctx.settings.update(patch)
     except ValidationError as exc:

@@ -101,6 +101,25 @@ export function SafetySettings() {
       </div>
 
       <div className="field">
+        <label htmlFor="scoring-model">Claude model</label>
+        <select
+          id="scoring-model"
+          value={settings.scoring_model}
+          onChange={(event) =>
+            void run(() => api.updateAppSettings({ scoring_model: event.target.value }))
+          }
+        >
+          <option value="claude-sonnet-5-5">Sonnet 5.5 (recommended)</option>
+          <option value="claude-haiku-5-5">Haiku 5.5 (cheapest)</option>
+          <option value="claude-opus-5-5">Opus 5.5 (most careful, about twice Sonnet's price)</option>
+        </select>
+        <span className="muted small">
+          Used for scoring clips and for the safety check of each clip's frames. Needs an
+          Anthropic API key.
+        </span>
+      </div>
+
+      <div className="field">
         <label htmlFor="music-action">When music is detected</label>
         <select
           id="music-action"

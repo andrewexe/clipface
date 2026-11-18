@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.13.1 - Model fixes (2026-11-18)
+## 0.13.2 - Sonnet 5.5 and model fixes (2026-11-18)
+
+### Changed
+
+- The scoring and safety-check model is now Sonnet 5.5, at about half Opus 5.5's price.
+  Settings files that still hold the old default (Opus 5.5) are moved to it once, on
+  start. A Claude model picker is in Settings, under Safety.
 
 ### Fixed
 

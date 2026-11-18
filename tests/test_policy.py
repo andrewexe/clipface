@@ -293,7 +293,7 @@ def test_classifier_request_shape(env):
     findings = env.classifier.check(env.clips.clean, 8.0, "said <b>something</b>")
     assert findings == []
     (call,) = env.state.client.calls
-    assert call["model"] == "claude-opus-5-5" and call["output_format"] is PolicyReport
+    assert call["model"] == "claude-sonnet-5-5" and call["output_format"] is PolicyReport
     assert call["betas"] == ["server-side-fallback-2026-07-01"] and call["fallbacks"] == "default"
     content = call["messages"][0]["content"]
     images = [block for block in content if block["type"] == "image"]

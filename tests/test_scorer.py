@@ -107,7 +107,7 @@ def test_request_shape(rig):
     rig.state.client = FakeClient(reply(decision()))
     rig.scorer.score(draft())
     (call,) = rig.state.client.calls
-    assert call["model"] == "claude-opus-5-5"
+    assert call["model"] == "claude-sonnet-5-5"
     assert call["output_format"] is ClipDecision
     assert call["system"] == SYSTEM_PROMPT
     assert call["output_config"] == {"effort": "medium"}
@@ -154,7 +154,7 @@ def test_good_reply_fills_the_draft_and_records_spend(rig):
     assert d.reasons == ["clear pay-off", "big reaction"] and d.reject is None and d.notes == {}
     (spend,) = rig.spend()
     assert spend.service == "anthropic"
-    assert spend.usd == pytest.approx((900 * 4 + 400 * 20) / 1e6)
+    assert spend.usd == pytest.approx((900 * 2 + 400 * 10) / 1e6)
 
 
 def test_low_score_is_rejected_before_rendering(rig):
