@@ -41,8 +41,14 @@ def usage(ctx: AppContext = Depends(get_ctx)) -> dict:
 
 @router.post("/cleanup")
 def cleanup(ctx: AppContext = Depends(get_ctx)) -> dict:
-    retention = ctx.settings.get().raw_retention_hours * 3600
-    freed = storage.sweep(ctx.session_factory, ctx.config, time.time(), retention)
+    settings = ctx.settings.get()
+    freed = storage.sweep(
+        ctx.session_factory,
+        ctx.config,
+        time.time(),
+        settings.raw_retention_hours * 3600,
+        settings.pending_expiry_hours * 3600,
+    )
     if ctx.recorder is not None:
         ctx.recorder.wake()
     return {"deleted_files": freed.files, "freed_bytes": freed.bytes, **usage(ctx)}

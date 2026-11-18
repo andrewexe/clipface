@@ -291,6 +291,7 @@ export type AppSettings = {
   segment_seconds: number;
   disk_cap_gb: number;
   raw_retention_hours: number;
+  pending_expiry_hours: number;
   stream_quality: string;
   detect_z_threshold: number;
   detect_cooldown_s: number;

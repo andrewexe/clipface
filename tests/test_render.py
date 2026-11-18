@@ -567,3 +567,48 @@ def test_cleanup_deletes_posted_copies_and_finished_footage(rig):
     assert not video.exists() and video.with_suffix(".jpg").exists()
     with rig.factory() as db:
         assert db.get(Clip, clip.id).file_path is None
+
+
+def _clip_with_raw(rig):
+    moment_id = add_moment(rig, peak=NOW - 15)
+    assert rig.pipeline.process(moment_id) == "clipped"
+    raw = rig.config.raw_dir / f"moment_{moment_id}"
+    os.utime(raw, (NOW, NOW))  # footage copied out "now" on the test clock
+    with rig.factory() as db:
+        clip = db.scalars(select(Clip)).one()
+    return clip.id, raw, Path(clip.file_path)
+
+
+def test_approved_clips_keep_raw_footage_only_for_the_retention_time(rig):
+    clip_id, raw, video = _clip_with_raw(rig)
+    with rig.factory.begin() as db:
+        db.get(Clip, clip_id).status = "approved"
+    rig.pipeline.clean_raw()
+    assert raw.exists()  # just approved: a re-render is still possible
+    rig.clock[0] = NOW + 7 * 3600  # past the 6 h retention
+    rig.pipeline.clean_raw()
+    assert not raw.exists() and video.exists()  # the finished clip stays
+
+
+def test_unreviewed_clips_expire_and_their_files_are_deleted(rig):
+    clip_id, raw, video = _clip_with_raw(rig)
+    rig.clock[0] = NOW + 47 * 3600
+    rig.pipeline.clean_raw()
+    assert get(rig, Clip, clip_id).status == "pending" and video.exists()
+
+    rig.clock[0] = NOW + 49 * 3600  # past the 48 h default
+    rig.pipeline.clean_raw()
+    clip = get(rig, Clip, clip_id)
+    assert clip.status == "rejected" and clip.meta["expired"] and clip.file_path is None
+    assert not video.exists() and not video.with_suffix(".jpg").exists() and not raw.exists()
+    with rig.factory() as db:
+        actions = [e.action for e in db.scalars(select(AuditLog))]
+    assert actions.count("clip.expire") == 1
+
+
+def test_expiry_can_be_turned_off(rig):
+    rig.settings.update({"pending_expiry_hours": 0})
+    clip_id, raw, video = _clip_with_raw(rig)
+    rig.clock[0] = NOW + 30 * 24 * 3600
+    rig.pipeline.clean_raw()
+    assert get(rig, Clip, clip_id).status == "pending" and video.exists() and raw.exists()

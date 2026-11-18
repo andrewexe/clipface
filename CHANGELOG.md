@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.13.4 - Less disk, and TikTok fixes (2026-11-18)
+
+### Changed
+
+- The rolling stream buffer keeps 8 minutes instead of 20. A moment's footage is copied
+  out within about three minutes, so this keeps the same clips with well under half the
+  disk. Settings files still on the old default of 20 move to 8 once.
+- Clips left in "To review" for 48 hours are rejected and deleted, like any other
+  rejected clip. Set "Delete unreviewed clips after" (Settings, Stream buffer) to change
+  this, or to 0 to keep them.
+- An approved clip keeps its raw footage only for the raw-footage retention time
+  (6 hours by default) instead of until it is posted. Only re-rendering needs it.
+
+### Fixed
+
+- Connecting TikTok: the sign-in now always comes back to http://127.0.0.1:47615/callback/.
+  TikTok matches the registered redirect URI exactly, port included, and the random port
+  used before could never match.
+- A TikTok draft was taken for a removed post a minute after it was sent, which paused
+  the TikTok account as a strike. TikTok cannot report on drafts, so they are no longer
+  checked.
+
 ## 0.13.3 - Recording on a busy connection (2026-11-18)
 
 ### Fixed

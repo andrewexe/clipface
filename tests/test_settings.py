@@ -7,15 +7,15 @@ from engine.settings import AppSettings, SettingsStore
 
 def test_defaults_match_the_plan(tmp_path):
     settings = SettingsStore(tmp_path / "s.json").get()
-    assert (settings.buffer_minutes, settings.segment_seconds) == (20, 10)
-    assert settings.raw_retention_hours == 6
+    assert (settings.buffer_minutes, settings.segment_seconds) == (8, 10)
+    assert settings.raw_retention_hours == 6 and settings.pending_expiry_hours == 48
 
 
 def test_update_persists_and_reports_changes(tmp_path):
     store = SettingsStore(tmp_path / "s.json")
     settings, changes = store.update({"buffer_minutes": 30, "segment_seconds": 10})
     assert settings.buffer_minutes == 30
-    assert changes == {"buffer_minutes": {"from": 20, "to": 30}}
+    assert changes == {"buffer_minutes": {"from": 8, "to": 30}}
     assert SettingsStore(tmp_path / "s.json").get().buffer_minutes == 30
 
 
@@ -64,7 +64,7 @@ def test_old_files_with_the_old_default_model_move_to_sonnet(tmp_path):
     path.write_text(json.dumps({"scoring_model": "claude-opus-5-5", "buffer_minutes": 25}))
     settings = SettingsStore(path).get()
     assert settings.scoring_model == "claude-sonnet-5-5" and settings.buffer_minutes == 25
-    assert settings.settings_version == 3
+    assert settings.settings_version == 4
 
 
 def test_a_model_chosen_after_the_migration_is_kept(tmp_path):
@@ -96,3 +96,13 @@ def test_old_files_recording_at_best_move_to_720p(tmp_path):
     assert SettingsStore(path).get().stream_quality == "1080p60,best"  # a real choice stays
     path.write_text(json.dumps({"stream_quality": "best", "settings_version": 3}))
     assert SettingsStore(path).get().stream_quality == "best"  # chosen after the change
+
+
+def test_old_files_with_the_old_buffer_default_move_to_8_minutes(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"buffer_minutes": 20, "settings_version": 3}))
+    assert SettingsStore(path).get().buffer_minutes == 8
+    path.write_text(json.dumps({"buffer_minutes": 30, "settings_version": 3}))
+    assert SettingsStore(path).get().buffer_minutes == 30  # a real choice stays
+    path.write_text(json.dumps({"buffer_minutes": 20, "settings_version": 4}))
+    assert SettingsStore(path).get().buffer_minutes == 20  # chosen after the change

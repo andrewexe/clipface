@@ -17,7 +17,10 @@ class AppSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     # Recording
-    buffer_minutes: int = Field(20, ge=2, le=120)
+    # A moment's footage is copied out of the buffer within about three minutes of it
+    # happening (render/pipeline.py FOOTAGE_WAIT_S), so 8 minutes leaves room for a queue
+    # of moments while keeping well under half the disk of the old 20.
+    buffer_minutes: int = Field(8, ge=2, le=120)
     segment_seconds: int = Field(10, ge=2, le=60)
     disk_cap_gb: float = Field(50.0, ge=1, le=4000)
     raw_retention_hours: float = Field(6.0, ge=0.5, le=72)
@@ -37,6 +40,9 @@ class AppSettings(BaseModel):
     clip_after_s: int = Field(8, ge=2, le=60)
     clip_min_s: int = Field(15, ge=5, le=60)  # finished clips are never shorter than this
     clip_max_s: int = Field(30, ge=10, le=180)  # ...or longer than this
+    # Clips left in "To review" longer than this are rejected and their files deleted.
+    # Stream moments go stale fast. 0 keeps them until you decide.
+    pending_expiry_hours: float = Field(48.0, ge=0, le=720)
     captions: bool = True
     transcription_usd_per_minute: float = Field(0.01, ge=0, le=1)
     transcription_daily_cap_usd: float = Field(2.0, ge=0, le=1000)
@@ -44,7 +50,7 @@ class AppSettings(BaseModel):
     # Claude scoring
     scoring: bool = True
     scoring_model: str = Field("claude-sonnet-5-5", pattern=r"^claude-[a-z0-9-]{3,60}$")
-    settings_version: int = 3
+    settings_version: int = 4
     score_min: float = Field(0.4, ge=0, le=1)  # moments scored below this are not rendered
     anthropic_daily_cap_usd: float = Field(5.0, ge=0, le=1000)
 
@@ -77,7 +83,7 @@ class AppSettings(BaseModel):
     export_dir: str = Field("", max_length=500)  # empty: the default folder in Videos
 
 
-SETTINGS_VERSION = 3
+SETTINGS_VERSION = 4
 
 
 def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
@@ -92,6 +98,11 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
         # Version 3 records at 720p instead of the stream's best quality.
         if raw.get("stream_quality") == "best":
             raw["stream_quality"] = "720p60,720p,best"
+    if version < 4:
+        # Version 4 keeps 8 minutes of each stream instead of 20. Only the old default
+        # moves; a buffer length someone chose stays.
+        if raw.get("buffer_minutes") == 20:
+            raw["buffer_minutes"] = 8
     raw["settings_version"] = SETTINGS_VERSION
     return raw
 

@@ -84,7 +84,8 @@ const RECORDING_FIELDS: NumberField[] = [
     key: "buffer_minutes",
     label: "Rolling buffer",
     unit: "minutes",
-    help: "How much of each live stream is kept so a moment can be cut after it happens.",
+    help:
+      "How much of each live stream is kept so a moment can be cut after it happens. Moments are cut within about three minutes, so 8 is plenty.",
     min: 2,
     max: 120,
   },
@@ -100,10 +101,18 @@ const RECORDING_FIELDS: NumberField[] = [
     key: "raw_retention_hours",
     label: "Keep raw footage",
     unit: "hours",
-    help: "Recordings are deleted this long after a stream ends, unless a clip uses them.",
+    help: "Recordings are deleted this long after a stream ends, and an approved clip's footage this long after it is cut. Clips waiting for review keep theirs.",
     min: 0.5,
     max: 72,
     step: 0.5,
+  },
+  {
+    key: "pending_expiry_hours",
+    label: "Delete unreviewed clips after",
+    unit: "hours",
+    help: "Clips left in To review this long are rejected and deleted. 0 keeps them until you decide.",
+    min: 0,
+    max: 720,
   },
 ];
 
@@ -410,9 +419,10 @@ function StorageCard() {
         </tbody>
       </table>
       <p className="muted small">
-        Rejected clips are deleted at once. A clip's footage is deleted once it is posted or
-        rejected, and a stream's buffer about ten minutes after it ends. Exported clips are yours
-        to delete once uploaded.
+        Rejected clips are deleted at once, and clips left unreviewed are deleted after the time
+        set under Stream buffer. A clip's footage is deleted once it is posted or rejected, or a
+        few hours after approval, and a stream's buffer about ten minutes after it ends. Exported
+        clips are yours to delete once uploaded.
       </p>
       <div className="form-foot">
         <button

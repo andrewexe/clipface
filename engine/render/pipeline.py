@@ -523,5 +523,11 @@ class ClipPipeline:
     def clean_raw(self) -> int:
         """Delete what no clip needs any more (see engine/storage.py). Returns how many
         files went."""
-        retention = self._settings.get().raw_retention_hours * 3600
-        return storage.sweep(self._session_factory, self._config, self._clock(), retention).files
+        settings = self._settings.get()
+        return storage.sweep(
+            self._session_factory,
+            self._config,
+            self._clock(),
+            settings.raw_retention_hours * 3600,
+            settings.pending_expiry_hours * 3600,
+        ).files

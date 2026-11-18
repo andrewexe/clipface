@@ -3,8 +3,11 @@
 - A rejected clip (by you, the safety gate, a stop request or a failed spot check) is
   deleted for good: its video, thumbnail, raw footage, and any exported copy. Its row
   stays, without file paths, so the same footage is still recognised as a duplicate.
-- Raw footage of a moment is deleted as soon as no clip waiting for review or posting
-  needs it.
+- Raw footage of a moment is deleted as soon as no clip needs it. A clip waiting for
+  review keeps it (it can still be re-rendered); an approved clip keeps it only for the
+  raw-footage retention time, since re-rendering after approval is rare.
+- A clip left in "To review" past the expiry time is rejected and deleted like any
+  other rejected clip: stream moments go stale.
 - Once a clip is posted everywhere it was scheduled to go, the app's own copy of the
   video is deleted. The exported copy in your export folder stays.
 - Exports are hard links where possible, so an exported clip takes no extra space.
@@ -15,18 +18,19 @@ from __future__ import annotations
 import logging
 import shutil
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from engine.config import Config
+from engine.db.audit import write_audit
 from engine.db.models import Clip, Moment, PublishJob
 
 log = logging.getLogger(__name__)
 
 FINAL = ("rejected", "removed")
-NEEDS_RAW = ("pending", "approved")  # still reviewable or re-renderable
 UNFINISHED_JOBS = ("scheduled", "running", "failed")
 
 
@@ -107,11 +111,36 @@ def purge_clip(session_factory: sessionmaker[Session], config: Config, clip_id: 
 
 
 def sweep(
-    session_factory: sessionmaker[Session], config: Config, now: float, retention_s: float
+    session_factory: sessionmaker[Session],
+    config: Config,
+    now: float,
+    retention_s: float,
+    pending_expiry_s: float = 0.0,
 ) -> Freed:
-    """One pass over everything the app can safely delete."""
+    """One pass over everything the app can safely delete. `pending_expiry_s` 0 keeps
+    unreviewed clips for good."""
     freed = Freed()
     with session_factory.begin() as db:
+        # 0. Clips nobody reviewed in time: rejected, so step 1 deletes their files.
+        if pending_expiry_s > 0:
+            cutoff = datetime.fromtimestamp(now - pending_expiry_s, UTC)
+            stale = db.scalars(
+                select(Clip)
+                .join(Moment, Moment.id == Clip.moment_id)
+                .where(Clip.status == "pending", Moment.peak_ts < cutoff)
+            ).all()
+            for clip in stale:
+                clip.status = "rejected"
+                clip.meta = {**(clip.meta or {}), "expired": True}
+                write_audit(
+                    db,
+                    actor="system",
+                    action="clip.expire",
+                    object_id=f"clip:{clip.id}",
+                    details={"after_hours": round(pending_expiry_s / 3600, 1)},
+                )
+            if stale:
+                log.info("storage: %d unreviewed clip(s) expired", len(stale))
         # 1. Rejected and removed clips that still have files.
         for clip in db.scalars(select(Clip).where(Clip.status.in_(FINAL))):
             if not (clip.meta or {}).get("files_deleted"):
@@ -129,7 +158,8 @@ def sweep(
             if waiting is None and _inside(video, config.clips_dir):
                 freed.add(_delete(video))  # the thumbnail is tiny and stays
                 clip.file_path = None
-        needs_raw = set(db.scalars(select(Clip.moment_id).where(Clip.status.in_(NEEDS_RAW))))
+        pending_raw = set(db.scalars(select(Clip.moment_id).where(Clip.status == "pending")))
+        approved_raw = set(db.scalars(select(Clip.moment_id).where(Clip.status == "approved")))
         moment_status = dict(db.execute(select(Moment.id, Moment.status)).all())
 
     # 3. Raw footage no clip needs any more.
@@ -143,8 +173,10 @@ def sweep(
                 age = now - folder.stat().st_mtime
             except (ValueError, OSError):
                 continue
-            if moment_id in needs_raw:
-                continue
+            if moment_id in pending_raw:
+                continue  # still reviewable, so it may be re-rendered
+            if moment_id in approved_raw and age <= retention_s:
+                continue  # just approved: a re-render is still likely enough
             finished = moment_status.get(moment_id) in ("clipped", "rejected")
             if finished or age > retention_s:
                 freed.add(_delete_tree(folder))

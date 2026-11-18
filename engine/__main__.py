@@ -4,7 +4,7 @@ The desktop app starts this as a child process and passes the session token in t
 CLIPPER_SESSION_TOKEN environment variable. The engine binds a loopback port, then
 prints one line to stdout so the app knows where to connect:
 
-    CLIPPER_ENGINE_READY {"port": 51234, "version": "0.13.3"}
+    CLIPPER_ENGINE_READY {"port": 51234, "version": "0.13.4"}
 
 On a startup failure it prints `CLIPPER_ENGINE_ERROR <reason>` and exits non-zero.
 """
