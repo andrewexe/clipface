@@ -44,6 +44,7 @@ from engine.policy.rules import build_description, normalise_rules
 from engine.publish.errors import (
     PublishAuthError,
     PublishError,
+    PublishLimited,
     PublishPending,
     PublishRejected,
 )
@@ -53,6 +54,8 @@ log = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 5
 MAX_WAITS = 60  # two hours of two-minute checks
+LIMIT_WAIT = timedelta(minutes=60)  # a platform limit (quota, too many drafts): look again
+MAX_LIMIT_WAITS = 72  # three days of hourly looks, then give up
 ACTIVE = ("scheduled", "running", "succeeded")
 STRIKE_REASONS = {"copyright", "claim", "trademark", "legal", "termsOfUse", "inappropriate"}
 POST_CHECK_INTERVAL_S = 1800
@@ -206,6 +209,12 @@ class Publisher:
 
     def _next_slot(self, db: Session, account: Account, settings: AppSettings) -> datetime:
         now = self._now()
+        if settings.post_right_away:
+            # No spacing and no posting hours: now, unless the account's daily cap is used.
+            local = self._local(now)
+            if self._posts_on_day(db, account.id, local) < max(0, account.daily_cap):
+                return now
+            return self._window_start(local + timedelta(days=1), settings.post_window_start_hour)
         last = db.scalar(
             select(PublishJob.scheduled_at)
             .where(PublishJob.account_id == account.id, PublishJob.status.in_(ACTIVE))
@@ -315,6 +324,8 @@ class Publisher:
             job = db.get(PublishJob, job_id)
             if job is None or job.status != "scheduled":
                 return job.status if job else "missing"
+            if job.scheduled_at > self._now():
+                return "scheduled"  # moved later since the due list was read (a limit hold)
             account = db.get(Account, job.account_id)
             if settings.publishing_paused or account.paused:
                 return "scheduled"
@@ -379,6 +390,8 @@ class Publisher:
             return self._finish(job_id, "failed", error=str(exc))
         except PublishPending as exc:
             return self._wait_for_platform(job_id, str(exc))
+        except PublishLimited as exc:
+            return self._wait_for_limit(job_id, str(exc))
         except PublishError as exc:
             return self._retry_later(job_id, str(exc), state["attempts"])
         except Exception as exc:  # noqa: BLE001 - never let one job stop the publisher
@@ -437,6 +450,54 @@ class Publisher:
             job.status, job.error = "scheduled", note
             job.scheduled_at = self._now() + timedelta(minutes=2)
         return "scheduled"
+
+    def _wait_for_limit(self, job_id: int, note: str) -> str:
+        """The platform's own limit is reached. Try again in an hour without using up an
+        attempt: the post itself is fine."""
+        with self._session_factory.begin() as db:
+            job = db.get(PublishJob, job_id)
+            state = dict(job.state or {})
+            state["limit_waits"] = int(state.get("limit_waits", 0)) + 1
+            state["attempts"] = max(0, int(state.get("attempts", 1)) - 1)
+            job.state = state
+            if state["limit_waits"] > MAX_LIMIT_WAITS:
+                job.status, job.error = "failed", f"{note} (gave up after three days)"
+                return "failed"
+            job.status, job.error = "scheduled", note
+            job.scheduled_at = retry_at = self._now() + LIMIT_WAIT
+            # The limit is the account's, not this post's: hold the account's other waiting
+            # posts until then too, so one post looks each hour instead of all of them.
+            held = db.scalars(
+                select(PublishJob).where(
+                    PublishJob.account_id == job.account_id,
+                    PublishJob.status == "scheduled",
+                    PublishJob.id != job.id,
+                    PublishJob.scheduled_at < retry_at,
+                )
+            ).all()
+            for offset, other in enumerate(sorted(held, key=lambda j: j.scheduled_at), 1):
+                other.scheduled_at = retry_at + timedelta(seconds=offset)
+                other.error = f"waiting: {note}"
+        return "scheduled"
+
+    def bring_forward(self) -> int:
+        """Post-right-away was switched on: every post still waiting for its spaced-out
+        slot is due now. Retries and platform waits keep their times. Returns how many."""
+        now = self._now()
+        moved = 0
+        with self._session_factory.begin() as db:
+            for job in db.scalars(select(PublishJob).where(PublishJob.status == "scheduled")):
+                state = job.state or {}
+                fresh = not job.error and not state.get("attempts") and not state.get("waits")
+                if fresh and job.scheduled_at > now:
+                    job.scheduled_at = now
+                    moved += 1
+            if moved:
+                write_audit(db, actor="system", action="publish.bring_forward",
+                            details={"jobs": moved})  # fmt: skip
+        if moved:
+            self.wake()
+        return moved
 
     def rotate_token(self, platform: str, old: str, new: str) -> None:
         """A platform issued a new refresh token: store it in place of the old one."""

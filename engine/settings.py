@@ -68,6 +68,9 @@ class AppSettings(BaseModel):
     blocked_words: list[str] = Field(default_factory=list, max_length=200)
 
     # Publishing
+    # Post each approved clip as soon as it is ready, on every account, instead of spacing
+    # posts out over the day. The daily cap per account still applies.
+    post_right_away: bool = False
     youtube_privacy: str = Field("private", pattern=r"^(private|unlisted|public)$")
     post_gap_min_minutes: int = Field(20, ge=1, le=720)
     post_gap_max_minutes: int = Field(90, ge=1, le=1440)

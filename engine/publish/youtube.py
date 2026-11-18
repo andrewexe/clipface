@@ -29,7 +29,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from engine.publish.errors import PublishAuthError, PublishError, PublishRejected
+from engine.publish.errors import PublishAuthError, PublishError, PublishLimited, PublishRejected
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +49,10 @@ CLOCK_SKEW = timedelta(minutes=15)
 GAMING_CATEGORY = "20"
 TITLE_MAX = 100
 DESCRIPTION_MAX = 4900
+
+
+class YouTubeLimited(PublishLimited):
+    pass
 
 
 class YouTubeError(PublishError):
@@ -219,7 +223,10 @@ class YouTubeClient:
         if status == 401:
             raise YouTubeAuthError("YouTube no longer accepts this account's sign-in")
         if status == 403 and reason in ("quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"):
-            raise YouTubeError("YouTube's daily upload quota is used up")
+            raise YouTubeLimited("YouTube's daily upload quota is used up")
+        if reason == "uploadLimitExceeded":
+            # The channel's own daily upload limit (low for new or unverified channels).
+            raise YouTubeLimited("this channel reached YouTube's daily upload limit")
         if status in (429, 500, 502, 503, 504):
             raise YouTubeError(f"YouTube returned {status} for {what}")
         raise YouTubeRejected(f"YouTube refused {what} ({status}: {reason or 'no reason'})", reason)

@@ -106,3 +106,25 @@ def test_old_files_with_the_old_buffer_default_move_to_8_minutes(tmp_path):
     assert SettingsStore(path).get().buffer_minutes == 30  # a real choice stays
     path.write_text(json.dumps({"buffer_minutes": 20, "settings_version": 4}))
     assert SettingsStore(path).get().buffer_minutes == 20  # chosen after the change
+
+
+def test_switching_post_right_away_on_moves_waiting_posts_up(harness):
+    calls = []
+
+    class Publisher:
+        def bring_forward(self):
+            calls.append("forward")
+            return 3
+
+        def wake(self):
+            pass
+
+    harness.ctx.publisher = Publisher()
+    patch = harness.client.patch
+    assert patch("/settings/app", json={"post_right_away": True}, headers=harness.auth).json()[
+        "post_right_away"
+    ]
+    assert calls == ["forward"]
+    patch("/settings/app", json={"post_right_away": True}, headers=harness.auth)  # no change
+    patch("/settings/app", json={"post_right_away": False}, headers=harness.auth)  # off
+    assert calls == ["forward"]

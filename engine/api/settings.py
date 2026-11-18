@@ -132,6 +132,8 @@ def update_app_settings(patch: dict, ctx: AppContext = Depends(get_ctx)) -> dict
     if changes:
         with ctx.session_factory.begin() as session:
             write_audit(session, actor="user", action="settings.update", details=changes)
+        if changes.get("post_right_away", {}).get("to") and ctx.publisher is not None:
+            ctx.publisher.bring_forward()  # the posts already waiting go now too
         for service in ctx.services():
             if service is not None:
                 service.wake()

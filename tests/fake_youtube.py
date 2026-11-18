@@ -34,6 +34,7 @@ class FakeYouTube:
         self.access_serial = 0
         self.revoked: list[str] = []
         self.quota_exceeded = False
+        self.channel_limit = False
         self.reject_metadata = False
 
     # -- helpers ----------------------------------------------------------------------
@@ -160,6 +161,9 @@ class FakeYouTube:
         if self.quota_exceeded:
             body = {"error": {"errors": [{"reason": "quotaExceeded"}]}}
             return httpx.Response(403, json=body)
+        if self.channel_limit:
+            body = {"error": {"errors": [{"reason": "uploadLimitExceeded"}]}}
+            return httpx.Response(400, json=body)
         if self.reject_metadata:
             body = {"error": {"errors": [{"reason": "invalidTitle"}]}}
             return httpx.Response(400, json=body)

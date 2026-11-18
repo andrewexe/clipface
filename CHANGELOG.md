@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.13.6 - Post as soon as a clip is ready (2026-11-18)
+
+### Added
+
+- "Post as soon as a clip is ready" on the Accounts page. Each approved clip goes to every
+  account at once, at any hour, instead of 20 to 90 minutes apart between 9:00 and 23:00.
+  Switching it on also sends the posts already waiting. Each account's posts-per-day limit
+  still applies. Off by default.
+- The Posts list shows each post's platform under the account name.
+
+### Changed
+
+- A platform's own limit (YouTube's daily upload quota or the channel's daily upload
+  limit, "uploadLimitExceeded"; TikTok's rate limit or too many drafts waiting in the TikTok
+  inbox) no longer fails posts. The post waits an hour and tries again, for up to three
+  days, and the account's other waiting posts are held behind it, so one post checks each
+  hour instead of all of them. Before, "uploadLimitExceeded" failed every remaining post.
+
 ## 0.13.5 - Stay awake while recording (2026-11-18)
 
 ### Added

@@ -17,5 +17,10 @@ class PublishRejected(PublishError):
         self.reason = reason
 
 
+class PublishLimited(PublishError):
+    """The platform's own limit is reached (daily quota, too many drafts waiting). Not
+    the post's fault: try again later without counting it as a failed attempt."""
+
+
 class PublishPending(PublishError):
     """Nothing is wrong: the platform is still processing. Look again shortly."""

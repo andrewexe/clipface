@@ -82,6 +82,7 @@ def list_accounts(ctx: AppContext = Depends(get_ctx)) -> dict:
         "connecting": flow is not None and not flow.finished.is_set(),
         "connect_error": flow.error if flow is not None and flow.finished.is_set() else None,
         "privacy": ctx.settings.get().youtube_privacy,
+        "post_right_away": ctx.settings.get().post_right_away,
     }
 
 

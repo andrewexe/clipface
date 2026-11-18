@@ -263,6 +263,15 @@ export function Accounts() {
     }
   };
 
+  const setPostRightAway = async (on: boolean) => {
+    try {
+      await api.updateAppSettings({ post_right_away: on });
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   const setPrivacy = async (privacy: AccountsResponse["privacy"]) => {
     try {
       await api.updateAppSettings({ youtube_privacy: privacy });
@@ -357,6 +366,21 @@ export function Accounts() {
                 permission is Granted or Clipping program.
               </span>
             </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={data.post_right_away}
+                  onChange={(event) => void setPostRightAway(event.target.checked)}
+                />{" "}
+                Post as soon as a clip is ready
+              </label>
+              <span className="muted small">
+                Every approved clip goes to all accounts at once, at any hour, instead of being
+                spaced 20 to 90 minutes apart between 9:00 and 23:00. Turning this on also sends
+                the posts already waiting. Each account's posts-per-day limit still applies.
+              </span>
+            </div>
           </div>
         </>
       )}
@@ -377,7 +401,10 @@ export function Accounts() {
               {jobs.map((job) => (
                 <tr key={job.id} data-job={job.id}>
                   <td>{job.title ?? `Clip ${job.clip_id}`}</td>
-                  <td>{job.account}</td>
+                  <td>
+                    {job.account}
+                    <div className="muted small">{PLATFORM[job.platform] ?? job.platform}</div>
+                  </td>
                   <td>{when(job.scheduled_at)}</td>
                   <td>
                     {job.removed ? "Taken down" : JOB_LABEL[job.status]}

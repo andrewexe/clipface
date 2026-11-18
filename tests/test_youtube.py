@@ -400,6 +400,16 @@ def test_quota_exhaustion_is_retried_later_not_failed(rig):
     due(rig)
     job = rig.job()
     assert job.status == "scheduled" and "quota" in job.error
+    # A platform limit is not the post's fault: no attempt used, try again in an hour.
+    assert job.state["attempts"] == 0
+    for _ in range(MAX_ATTEMPTS + 2):  # many hours of an empty quota never fail the post
+        rig.clock.advance(minutes=61)
+        rig.publisher.run_due()
+    assert rig.job().status == "scheduled"
+    rig.fake.quota_exceeded = False
+    rig.clock.advance(minutes=61)
+    rig.publisher.run_due()
+    assert rig.job().status == "succeeded"
 
 
 def test_a_refused_upload_fails_without_retrying(rig):
@@ -509,3 +519,23 @@ def test_a_strike_drops_l3_back_to_l2_and_restarts_the_clock(rig):
 
     rig.publisher.register_strike(1, "claim")  # at L2 there is nothing further to drop
     assert rig.settings.get().autonomy_level == "L2" and rig.audit().count("autonomy.demote") == 1
+
+
+def test_channel_upload_limit_holds_the_account_instead_of_failing_posts(rig):
+    second = rig.add_clip()
+    rig.fake.channel_limit = True
+    rig.publisher.schedule_clip(1)
+    rig.publisher.schedule_clip(second)
+    rig.clock.advance(hours=3)  # both due
+    rig.publisher.run_due()
+    with rig.factory() as db:
+        jobs = db.scalars(select(PublishJob).order_by(PublishJob.id)).all()
+        assert [j.status for j in jobs] == ["scheduled", "scheduled"]  # nothing failed
+        assert "daily upload limit" in jobs[0].error and jobs[1].error.startswith("waiting")
+        assert jobs[1].scheduled_at > jobs[0].scheduled_at  # held behind the first, in order
+        assert jobs[0].state["attempts"] == 0 and not (jobs[1].state or {}).get("attempts")
+    rig.fake.channel_limit = False
+    rig.clock.advance(minutes=62)
+    rig.publisher.run_due()
+    with rig.factory() as db:
+        assert [j.status for j in db.scalars(select(PublishJob))] == ["succeeded", "succeeded"]

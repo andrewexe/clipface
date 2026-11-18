@@ -200,6 +200,7 @@ export type AccountsResponse = {
   connecting: boolean;
   connect_error: string | null;
   privacy: "private" | "unlisted" | "public";
+  post_right_away: boolean;
 };
 
 export type PostJob = {
@@ -294,6 +295,7 @@ export type AppSettings = {
   pending_expiry_hours: number;
   stream_quality: string;
   keep_awake_while_recording: boolean;
+  post_right_away: boolean;
   detect_z_threshold: number;
   detect_cooldown_s: number;
   detect_audio: boolean;

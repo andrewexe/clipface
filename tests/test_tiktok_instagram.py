@@ -20,7 +20,7 @@ from engine.keychain import SecretStore
 from engine.logging_setup import SecretRedactor
 from engine.publish import tiktok
 from engine.publish.instagram import InstagramClient, InstagramPublisher
-from engine.publish.service import MAX_WAITS, Publisher
+from engine.publish.service import LIMIT_WAIT, MAX_WAITS, Publisher
 from engine.publish.tiktok import TikTokClient, TikTokPublisher, chunk_plan
 from engine.settings import SettingsStore
 from tests.fake_keyring import MemoryKeyring
@@ -81,6 +81,11 @@ class FakeTikTok:
             return httpx.Response(403, json={"error": {"code": "scope_not_authorized"}})
         body = json.loads(request.content)
         if path == "/v2/post/publish/inbox/video/init/":
+            if self.faults and self.faults[0] == "too_many_pending":
+                self.faults.pop(0)
+                return httpx.Response(
+                    403, json={"error": {"code": "spam_risk_too_many_pending_share"}}
+                )
             info = body["source_info"]
             assert info["source"] == "FILE_UPLOAD"
             assert (info["chunk_size"], info["total_chunk_count"]) == chunk_plan(info["video_size"])
@@ -239,7 +244,7 @@ def rig(tmp_path):
             clock.now += timedelta(minutes=minutes)
             publisher.run_due()
 
-    yield SimpleNamespace(factory=factory, secrets=secrets, publisher=publisher, tt=fake_tt, ig=fake_ig,
+    yield SimpleNamespace(factory=factory, secrets=secrets, publisher=publisher, tt=fake_tt, ig=fake_ig, settings=settings,
                           clock=clock, add_account=add_account, job=job, run=run, alerts=alerts,
                           tt_client=tt_client, video=video)  # fmt: skip
     tt_client.close()
@@ -381,6 +386,49 @@ def test_a_delivered_tiktok_draft_is_not_taken_for_a_removed_post(rig):
         account = db.get(Account, 1)
         assert account.paused is False and account.pause_reason is None
     assert rig.alerts == [] and "strike" not in rig.job().state
+
+
+def test_too_many_waiting_drafts_waits_an_hour_without_using_an_attempt(rig):
+    rig.add_account("tiktok")
+    rig.tt.faults = ["too_many_pending"]
+    rig.publisher.schedule_clip(1)
+    rig.run()
+    job = rig.job()
+    assert job.status == "scheduled" and "too many TikTok drafts" in job.error
+    assert job.state["attempts"] == 0 and job.scheduled_at == rig.clock.now + LIMIT_WAIT
+    rig.run(times=3, minutes=61)
+    assert rig.job().status == "succeeded" and rig.tt.drafts() == 1
+
+
+def test_post_right_away_schedules_now_even_outside_posting_hours(rig):
+    rig.settings.update(
+        {"post_right_away": True, "post_window_start_hour": 9, "post_window_end_hour": 10}
+    )  # fmt: skip  (T0 is 14:00, outside)
+    rig.add_account("tiktok")
+    rig.publisher.schedule_clip(1)
+    assert rig.job().scheduled_at == rig.clock.now
+    rig.run(minutes=0)
+    assert rig.job().status in ("scheduled", "succeeded") and rig.tt.inits == 1  # started
+
+
+def test_post_right_away_still_respects_the_daily_cap(rig):
+    rig.settings.update({"post_right_away": True})
+    rig.add_account("tiktok")
+    with rig.factory.begin() as db:
+        db.get(Account, 1).daily_cap = 0
+    rig.publisher.schedule_clip(1)
+    assert rig.job().scheduled_at.date() > rig.clock.now.date()  # tomorrow
+
+
+def test_switching_post_right_away_on_brings_waiting_posts_forward(rig):
+    rig.add_account("tiktok")
+    rig.publisher.schedule_clip(1)
+    later = rig.job().scheduled_at
+    assert later > rig.clock.now  # spaced out by default
+    rig.settings.update({"post_right_away": True})
+    assert rig.publisher.bring_forward() == 1
+    assert rig.job().scheduled_at == rig.clock.now
+    assert rig.publisher.bring_forward() == 0  # nothing left to move
 
 
 # -- Instagram ----------------------------------------------------------------------------

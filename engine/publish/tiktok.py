@@ -32,6 +32,7 @@ import httpx
 from engine.publish.errors import (
     PublishAuthError,
     PublishError,
+    PublishLimited,
     PublishPending,
     PublishRejected,
 )
@@ -171,11 +172,12 @@ class TikTokClient:
         if response.status_code == 401 or code in ("access_token_invalid", "scope_not_authorized"):
             self._access.pop(refresh_token, None)
             raise PublishAuthError("TikTok no longer accepts this account's sign-in")
-        if response.status_code == 429 or code in (
-            "rate_limit_exceeded",
-            "spam_risk_too_many_pending_share",
-        ):
-            raise PublishError("TikTok's rate limit was reached")
+        if code == "spam_risk_too_many_pending_share":
+            raise PublishLimited(
+                "too many TikTok drafts are waiting: post or delete some in the TikTok app"
+            )
+        if response.status_code == 429 or code == "rate_limit_exceeded":
+            raise PublishLimited("TikTok's rate limit was reached")
         if response.status_code >= 500:
             raise PublishError(f"TikTok returned {response.status_code}")
         if response.status_code >= 400 or (code and code != "ok"):
