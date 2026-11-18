@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.13.0 - Shorter clips, less disk (2026-11-18)
+
+### Changed
+
+- Clips are 15 to 30 seconds by default: 20 seconds before the moment and 8 after. Two
+  new settings, Shortest clip and Longest clip, hold every clip to that range, whatever
+  the window settings or Claude's suggested cut. Too long: the start is trimmed, so the
+  pay-off is kept. Too short: it is widened. A moment with less than the shortest clip's
+  worth of footage is dropped.
+- Rejecting a clip deletes it for good: its video, thumbnail, footage and any exported
+  copy. This applies to rejections by you, the phone, Claude Desktop, the safety gate,
+  a stop request and a failed spot check. Rejected clips can no longer be restored or
+  approved. Their titles stay in the Rejected tab, and their fingerprints stay so the
+  same footage is not clipped again.
+- A clip's footage is deleted as soon as no clip waiting for review or posting needs it,
+  instead of after 6 hours.
+- The app's own copy of a clip is deleted once it is posted everywhere it was scheduled.
+  The copy in your export folder stays.
+- Exports are hard links when the export folder is on the same drive, so an exported
+  clip takes no extra space.
+- A stream's buffer is deleted about 10 minutes after the stream ends, once every moment
+  from it has been cut, instead of after 6 hours.
+
+### Added
+
+- Storage card in Settings: space used by buffers, clips, footage, logs and exports, and a
+  "Clean up now" button.
+
 ## 0.12.0 - Autonomy level L3 (2026-11-12)
 
 The plan said when L3 unlocks but not what it does. This is the definition that was

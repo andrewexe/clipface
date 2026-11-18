@@ -258,7 +258,12 @@ function Detail({
               >
                 Approve <kbd>A</kbd>
               </button>
-              <button className="btn" disabled={busy} onClick={() => void act("reject")}>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => void act("reject")}
+                title="Rejects the clip and deletes its video for good"
+              >
                 Reject <kbd>R</kbd>
               </button>
             </>
@@ -268,7 +273,7 @@ function Detail({
               Export again
             </button>
           )}
-          {(clip.status === "approved" || clip.status === "rejected") && !spotCheck && (
+          {clip.status === "approved" && !spotCheck && (
             <button className="btn" disabled={busy} onClick={() => void act("restore")}>
               Back to review
             </button>
@@ -370,6 +375,12 @@ export function Queue() {
           {error}
         </div>
       )}
+      {tab === "rejected" && clips.length > 0 && (
+        <p className="muted small">
+          Rejected clips are deleted when you reject them. Only their titles are kept here, so
+          the same footage isn't clipped again.
+        </p>
+      )}
       {notice && (
         <div className="banner banner-warn" role="status">
           {notice}
@@ -384,6 +395,8 @@ export function Queue() {
                 Clips appear here a minute or so after a moment is detected on a live stream.
               </p>
             </>
+          ) : tab === "rejected" ? (
+            <p>No rejected clips.</p>
           ) : tab === "spot" ? (
             <p>No spot checks waiting.</p>
           ) : (

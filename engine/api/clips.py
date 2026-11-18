@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from engine import storage
 from engine.api.app import AppContext, get_ctx
 from engine.control.autonomy import demote_to_l2
 from engine.db.audit import write_audit
@@ -215,7 +216,9 @@ def get_clip(clip_id: int, ctx: AppContext = Depends(get_ctx)) -> dict:
 def _file(ctx: AppContext, clip_id: int, suffix: str, media_type: str) -> FileResponse:
     with ctx.session_factory() as db:
         clip, _moment, _streamer = _row(db, clip_id)
-        path = Path(clip.file_path or "").with_suffix(suffix)
+        if not clip.file_path:  # deleted (rejected, or posted and cleaned up)
+            raise HTTPException(status_code=404, detail="file not found")
+        path = Path(clip.file_path).with_suffix(suffix)
     # Only ever serve files the engine itself rendered into its clips folder.
     if not path.is_file() or path.parent.resolve() != ctx.config.clips_dir.resolve():
         raise HTTPException(status_code=404, detail="file not found")
@@ -293,6 +296,10 @@ def _set_status(
         db.flush()
         view = _view(clip, moment, streamer)
         view["export_error"] = export_error
+    if new == "rejected":
+        freed = storage.purge_clip(ctx.session_factory, ctx.config, clip_id)
+        view["deleted_bytes"] = freed.bytes
+        view["has_video"] = False
     if new == "approved" and ctx.publisher is not None:
         view["scheduled_posts"] = len(ctx.publisher.schedule_clip(clip_id))
     return view
@@ -301,18 +308,19 @@ def _set_status(
 @router.post("/clips/{clip_id}/approve")
 def approve_clip(clip_id: int, ctx: AppContext = Depends(get_ctx)) -> dict:
     """Approve and copy to the export folder for manual upload."""
-    return _set_status(ctx, clip_id, "approved", ("pending", "rejected"))
+    return _set_status(ctx, clip_id, "approved", ("pending",))
 
 
 @router.post("/clips/{clip_id}/reject")
 def reject_clip(clip_id: int, ctx: AppContext = Depends(get_ctx)) -> dict:
+    """Reject a clip and delete its files for good. This cannot be undone."""
     return _set_status(ctx, clip_id, "rejected", ("pending", "approved"))
 
 
 @router.post("/clips/{clip_id}/restore")
 def restore_clip(clip_id: int, ctx: AppContext = Depends(get_ctx)) -> dict:
     """Put a reviewed clip back in the queue."""
-    return _set_status(ctx, clip_id, "pending", ("approved", "rejected"))
+    return _set_status(ctx, clip_id, "pending", ("approved",))
 
 
 @router.post("/clips/{clip_id}/export")

@@ -4,7 +4,7 @@ The desktop app starts this as a child process and passes the session token in t
 CLIPPER_SESSION_TOKEN environment variable. The engine binds a loopback port, then
 prints one line to stdout so the app knows where to connect:
 
-    CLIPPER_ENGINE_READY {"port": 51234, "version": "0.12.0"}
+    CLIPPER_ENGINE_READY {"port": 51234, "version": "0.13.0"}
 
 On a startup failure it prints `CLIPPER_ENGINE_ERROR <reason>` and exits non-zero.
 """
@@ -167,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         ctx.session_factory,
         ctx.settings,
         classifier=PolicyClassifier(_secret(secrets, "anthropic_api_key"), ctx.settings, ledger),
+        config=config,
     )
     ctx.pipeline.add_listener(ctx.gate.review)
     youtube = YouTubeClient(_credentials(secrets, "google_client_id", "google_client_secret"))

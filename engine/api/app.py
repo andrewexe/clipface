@@ -119,6 +119,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         logs,
         moments,
         settings,
+        storage,
         streamers,
     )
 
@@ -175,4 +176,5 @@ def create_app(ctx: AppContext) -> FastAPI:
     app.include_router(accounts.router)
     app.include_router(bridge.router)
     app.include_router(insights.router)
+    app.include_router(storage.router)
     return app

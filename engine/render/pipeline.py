@@ -20,6 +20,7 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from engine import storage
 from engine.config import Config
 from engine.control.spend import SpendCapReached, SpendLedger
 from engine.db.audit import write_audit
@@ -74,6 +75,30 @@ class Draft:
     reasons: list[str] = field(default_factory=list)
     reject: str | None = None  # set to drop the moment before rendering
     notes: dict[str, str] = field(default_factory=dict)  # e.g. why it was not scored
+    min_length: float = 15.0  # the finished clip's allowed length, in seconds
+    max_length: float = 30.0
+
+
+def clip_length_limits(settings: AppSettings) -> tuple[float, float]:
+    low, high = float(settings.clip_min_s), float(settings.clip_max_s)
+    return (min(low, high), max(low, high))
+
+
+def fit_cut(
+    start: float, end: float | None, duration: float, min_len: float, max_len: float
+) -> tuple[float, float]:
+    """Make a cut inside [0, duration] that is between min_len and max_len long. Too long:
+    trim the start, so the pay-off at the end is kept. Too short: widen it, earlier first."""
+    end = duration if end is None else end
+    start, end = max(0.0, min(start, duration)), max(0.0, min(end, duration))
+    if end <= start:
+        start, end = 0.0, duration
+    if end - start > max_len:
+        start = end - max_len
+    if end - start < min_len:
+        start = max(0.0, end - min_len)
+        end = min(duration, start + min_len)
+    return start, end
 
 
 class Scorer(Protocol):
@@ -174,7 +199,12 @@ class ClipPipeline:
                 "signal_scores": dict(moment.signal_scores or {}),
             }
 
-        want_start, want_end = peak - settings.clip_before_s, peak + settings.clip_after_s
+        min_len, max_len = clip_length_limits(settings)
+        # The window never asks for more than the longest clip allowed: keep the build-up
+        # before the peak, and at most about a third of the clip after it.
+        after = min(settings.clip_after_s, max_len * 0.35)
+        before = min(settings.clip_before_s, max_len - after)
+        want_start, want_end = peak - before, peak + after
         segments = self._store.window(session_id, want_start, want_end)
         covered_to = segments[-1].end if segments else 0.0
         if covered_to < want_end - 0.5:
@@ -186,7 +216,7 @@ class ClipPipeline:
 
         start = max(want_start, segments[0].start)
         end = min(want_end, covered_to)
-        if end - start < MIN_CLIP_S:
+        if end - start < min_len - 0.5:
             return self._reject(moment_id, "too little footage of this moment was recorded")
 
         duplicate = self._overlapping_clip(session_id, start, end)
@@ -217,6 +247,8 @@ class ClipPipeline:
             window_start=start,
             duration=duration,
             words=words,
+            min_length=min_len,
+            max_length=max_len,
             **draft_base,
         )
         if self.scorer is not None:
@@ -226,10 +258,7 @@ class ClipPipeline:
             if draft.reject:
                 return self._reject(moment_id, draft.reject, score=draft.score)
 
-        cut_start = min(max(0.0, draft.cut_start), max(0.0, duration - MIN_CLIP_S))
-        cut_end = min(duration, draft.cut_end if draft.cut_end is not None else duration)
-        if cut_end - cut_start < MIN_CLIP_S:
-            cut_start, cut_end = 0.0, duration
+        cut_start, cut_end = fit_cut(draft.cut_start, draft.cut_end, duration, min_len, max_len)
         cut_words = [
             Word(w.text, w.start - cut_start, w.end - cut_start)
             for w in words
@@ -492,28 +521,7 @@ class ClipPipeline:
     # -- housekeeping -----------------------------------------------------------------
 
     def clean_raw(self) -> int:
-        """Delete raw footage older than the retention time, unless a clip that is still
-        pending or approved was cut from it."""
-        root = self._config.raw_dir
-        if not root.exists():
-            return 0
+        """Delete what no clip needs any more (see engine/storage.py). Returns how many
+        files went."""
         retention = self._settings.get().raw_retention_hours * 3600
-        with self._session_factory() as db:
-            in_use = set(
-                db.scalars(
-                    select(Clip.moment_id).where(Clip.status.in_(("pending", "approved")))
-                ).all()
-            )
-        removed = 0
-        for folder in root.iterdir():
-            if not folder.is_dir() or not folder.name.startswith("moment_"):
-                continue
-            try:
-                moment_id = int(folder.name.split("_", 1)[1])
-                age = self._clock() - folder.stat().st_mtime
-            except (ValueError, OSError):
-                continue
-            if moment_id not in in_use and age > retention:
-                shutil.rmtree(folder, ignore_errors=True)
-                removed += 1
-        return removed
+        return storage.sweep(self._session_factory, self._config, self._clock(), retention).files

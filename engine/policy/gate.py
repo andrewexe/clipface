@@ -16,6 +16,8 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from engine import storage
+from engine.config import Config
 from engine.control.autonomy import AUTONOMOUS
 from engine.db.audit import write_audit
 from engine.db.models import Clip, Moment, Streamer, StreamSession, utcnow
@@ -57,7 +59,9 @@ class PolicyGate:
         classifier: PolicyClassifier | None = None,
         music: Callable[[Path], MusicReading] = detect_music,
         rng: Callable[[], float] = random.random,
+        config: Config | None = None,  # set: rejected clips' files are deleted at once
     ) -> None:
+        self._config = config
         self._session_factory = session_factory
         self._settings = settings
         self._classifier = classifier
@@ -90,6 +94,11 @@ class PolicyGate:
         except Exception:
             log.exception("policy gate failed on clip %s", clip_id)
             action = self._record_failure(clip_id)
+        if action == "rejected" and self._config is not None:
+            try:
+                storage.purge_clip(self._session_factory, self._config, clip_id)
+            except Exception:
+                log.exception("could not delete the files of rejected clip %s", clip_id)
         listeners = list(self._on_approved if action == "auto_approved" else self._on_review)
         if action == "auto_approved" and self._spot_check:
             listeners += self._on_spot_check

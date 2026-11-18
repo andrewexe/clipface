@@ -156,15 +156,60 @@ def test_approve_survives_an_unwritable_export_folder(queue, tmp_path):
     assert call(queue, "POST", "/clips/2/export").status_code == 409  # still pending
 
 
-def test_reject_and_restore(queue):
-    assert call(queue, "POST", "/clips/2/reject").json()["status"] == "rejected"
+def test_reject_deletes_the_clip_for_good(queue):
+    video = queue.h.ctx.config.clips_dir / "clip_2.mp4"
+    raw = queue.h.ctx.config.raw_dir / "moment_2"
+    raw.mkdir(parents=True)
+    (raw / "100_000000.ts").write_bytes(b"x" * 1000)
+    response = call(queue, "POST", "/clips/2/reject")
+    body = response.json()
+    assert body["status"] == "rejected" and body["has_video"] is False
+    assert body["deleted_bytes"] > 1000
+    assert not video.exists() and not video.with_suffix(".jpg").exists() and not raw.exists()
     assert [c["id"] for c in call(queue, "GET", "/clips").json()["clips"]] == [1, 3]
     rejected = call(queue, "GET", "/clips", params={"status": "rejected"}).json()["clips"]
-    assert [c["id"] for c in rejected] == [2]
-    assert list(queue.export_dir.glob("*")) == []  # rejecting exports nothing
-    assert call(queue, "POST", "/clips/2/restore").json()["status"] == "pending"
-    assert audit(queue) == ["settings.update", "clip.reject", "clip.restore"]
+    assert [c["id"] for c in rejected] == [2] and rejected[0]["has_video"] is False
+    assert list(queue.export_dir.glob("*")) == []
+    # Final: it can't come back, and approving it again is refused.
+    assert call(queue, "POST", "/clips/2/restore").status_code == 409
+    assert call(queue, "POST", "/clips/2/approve").status_code == 409
+    assert call(queue, "GET", "/clips/2/video").status_code == 404
     assert call(queue, "POST", "/clips/99/reject").status_code == 404
+
+
+def test_rejecting_an_approved_clip_deletes_its_export_too(queue):
+    exported = Path(call(queue, "POST", "/clips/1/approve").json()["meta"]["exported_path"])
+    assert exported.exists() and exported.with_suffix(".txt").exists()
+    unrelated = queue.export_dir / "my own video.mp4"
+    unrelated.write_bytes(b"keep me")
+    call(queue, "POST", "/clips/1/reject")
+    assert not exported.exists() and not exported.with_suffix(".txt").exists()
+    assert unrelated.exists()  # nothing else in the folder is touched
+
+
+def test_approved_clips_can_still_go_back_to_review(queue):
+    call(queue, "POST", "/clips/1/approve")
+    assert call(queue, "POST", "/clips/1/restore").json()["status"] == "pending"
+
+
+def test_export_is_a_hard_link_when_possible(queue):
+    exported = Path(call(queue, "POST", "/clips/1/approve").json()["meta"]["exported_path"])
+    original = queue.h.ctx.config.clips_dir / "clip_1.mp4"
+    assert exported.stat().st_ino == original.stat().st_ino  # same bytes, no extra space
+    original.unlink()
+    assert exported.read_bytes()  # the export survives the app deleting its own copy
+
+
+def test_storage_usage_and_cleanup(queue):
+    usage = call(queue, "GET", "/storage").json()
+    assert usage["bytes"]["clips"] > 0 and usage["total_bytes"] >= usage["bytes"]["clips"]
+    assert usage["export_dir"] == str(queue.export_dir)
+    with queue.h.ctx.session_factory.begin() as db:
+        db.get(Clip, 3).status = "rejected"  # e.g. by a stop request, without deleting yet
+    cleaned = call(queue, "POST", "/storage/cleanup").json()
+    assert cleaned["deleted_files"] >= 2 and cleaned["freed_bytes"] > 0
+    assert not (queue.h.ctx.config.clips_dir / "clip_3.mp4").exists()
+    assert queue.h.client.get("/storage").status_code == 401
 
 
 def test_published_clips_cannot_be_flipped_back(queue):

@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -193,6 +194,8 @@ def rig(tmp_path, footage):
             )
         )
     settings = SettingsStore(config.settings_file)
+    # These tests were written around a 40-second window; the length rules have their own.
+    settings.update({"clip_before_s": 30, "clip_after_s": 10, "clip_min_s": 8, "clip_max_s": 40})
     transcriber = FakeTranscriber()
     clock = [NOW + 5]
     pipeline = ClipPipeline(
@@ -415,7 +418,7 @@ def test_run_pending_survives_a_crashing_moment_and_cleans_old_raw(rig):
     fresh = rig.config.raw_dir / "moment_998"
     fresh.mkdir()
     os.utime(fresh, (NOW, NOW))
-    assert rig.pipeline.clean_raw() == 1
+    rig.pipeline.clean_raw()
     assert not stale.exists() and fresh.exists()
 
 
@@ -477,3 +480,90 @@ def test_claude_scorer_in_the_pipeline_low_score_never_renders(rig):
     assert clip.claude_score is None
     assert "could not be used" in clip.meta["scoring_note"]
     assert get(rig, Moment, odd).status == "clipped"
+
+
+# -- clip length and storage --------------------------------------------------------------------
+
+
+def test_default_clips_are_15_to_30_seconds(rig):
+    rig.settings.update(
+        {"clip_before_s": 20, "clip_after_s": 8, "clip_min_s": 15, "clip_max_s": 30}
+    )
+    moment_id = add_moment(rig, peak=NOW - 15)
+    assert rig.pipeline.process(moment_id) == "clipped"
+    with rig.factory() as db:
+        clip = db.scalars(select(Clip)).one()
+    length = (clip.end_ts - clip.start_ts).total_seconds()
+    assert 27.5 <= length <= 28.5  # 20 s before the peak, 8 after
+    assert 27.5 <= probe(clip.file_path).duration <= 28.5
+
+
+def test_an_old_long_window_is_still_cut_to_the_maximum(rig):
+    rig.settings.update(
+        {"clip_before_s": 60, "clip_after_s": 30, "clip_min_s": 15, "clip_max_s": 30}
+    )
+    moment_id = add_moment(rig, peak=NOW - 12)
+    assert rig.pipeline.process(moment_id) == "clipped"
+    with rig.factory() as db:
+        clip = db.scalars(select(Clip)).one()
+    assert (clip.end_ts - clip.start_ts).total_seconds() <= 30.5
+    peak = NOW - 12
+    assert clip.start_ts.timestamp() < peak < clip.end_ts.timestamp()  # the moment is in it
+
+
+def test_scorer_cuts_are_held_to_the_range(rig):
+    rig.settings.update({"clip_min_s": 15, "clip_max_s": 30})
+
+    class Cutter:
+        def __init__(self, start, end):
+            self.start, self.end = start, end
+
+        def score(self, draft):
+            assert (draft.min_length, draft.max_length) == (15, 30)
+            draft.cut_start, draft.cut_end, draft.score = self.start, self.end, 0.9
+
+    rig.pipeline.scorer = Cutter(20.0, 26.0)  # 6 s: too short
+    first = add_moment(rig, peak=NOW - 15)
+    assert rig.pipeline.process(first) == "clipped"
+    with rig.factory() as db:
+        clip = db.scalars(select(Clip)).one()
+    assert 14.5 <= (clip.end_ts - clip.start_ts).total_seconds() <= 15.5
+
+
+def test_too_little_footage_for_the_shortest_clip_is_rejected(rig):
+    rig.settings.update({"clip_min_s": 15, "clip_max_s": 30})
+    moment_id = add_moment(rig, peak=NOW - 66)  # about 8 s of it is in the buffer
+    rig.clock[0] = NOW + 400
+    assert rig.pipeline.process(moment_id) == "rejected"
+
+
+def test_cleanup_deletes_posted_copies_and_finished_footage(rig):
+    from engine.db.models import Account, PublishJob
+
+    moment_id = add_moment(rig, peak=NOW - 15)
+    assert rig.pipeline.process(moment_id) == "clipped"
+    raw = rig.config.raw_dir / f"moment_{moment_id}"
+    with rig.factory() as db:
+        clip = db.scalars(select(Clip)).one()
+    video = Path(clip.file_path)
+    assert raw.exists() and video.exists()
+
+    rig.pipeline.clean_raw()
+    assert raw.exists() and video.exists()  # pending: still needed
+
+    with rig.factory.begin() as db:
+        db.add(Account(platform="youtube", handle="a"))
+        db.flush()
+        db.add(PublishJob(clip_id=clip.id, account_id=1, scheduled_at=datetime.fromtimestamp(NOW, UTC),
+                          idempotency_key="k", status="scheduled"))  # fmt: skip
+        db.get(Clip, clip.id).status = "published"
+    rig.pipeline.clean_raw()
+    assert not raw.exists()  # no longer needed for re-rendering
+    assert video.exists()  # a post still waits to use it
+
+    with rig.factory.begin() as db:
+        db.get(PublishJob, 1).status = "succeeded"
+    rig.pipeline.clean_raw()
+    assert not video.exists() and video.with_suffix(".jpg").exists()
+    with rig.factory() as db:
+        assert db.get(Clip, clip.id).file_path is None

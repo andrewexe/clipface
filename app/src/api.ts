@@ -225,6 +225,15 @@ export type Insights = {
   suggestions: { setting: string; current: number; suggested: number; why: string }[];
 };
 
+export type StorageUsage = {
+  bytes: { buffer: number; raw: number; clips: number; logs: number; database: number };
+  total_bytes: number;
+  export_bytes: number;
+  export_dir: string;
+  buffer_cap_bytes: number;
+  freed_bytes?: number;
+};
+
 export type McpStatus = { enabled: boolean; can_approve: boolean };
 
 export type Facecam = { x: number; y: number; w: number; h: number };
@@ -290,6 +299,8 @@ export type AppSettings = {
   detect_clips_count: number;
   clip_before_s: number;
   clip_after_s: number;
+  clip_min_s: number;
+  clip_max_s: number;
   captions: boolean;
   transcription_daily_cap_usd: number;
   scoring: boolean;
@@ -315,6 +326,8 @@ export type StreamersResponse = {
 };
 
 export const api = {
+  storage: () => request<StorageUsage>("GET", "/storage"),
+  cleanUp: () => request<StorageUsage>("POST", "/storage/cleanup"),
   telegram: () => request<TelegramStatus>("GET", "/control/telegram"),
   telegramAction: (action: "unpair" | "test") =>
     request<TelegramStatus>("POST", `/control/telegram/${action}`),

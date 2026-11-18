@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, type AppSettings, type Keychain, type SecretInfo } from "../api";
+import { api, type AppSettings, type Keychain, type SecretInfo, type StorageUsage } from "../api";
 import { McpSettings, PhoneApprovals, SafetySettings } from "./Safety";
 
 function SecretRow({ secret, onChanged }: { secret: SecretInfo; onChanged: () => void }) {
@@ -145,6 +145,22 @@ const DETECTION_FIELDS: NumberField[] = [
 ];
 
 const CLIP_FIELDS: NumberField[] = [
+  {
+    key: "clip_min_s",
+    label: "Shortest clip",
+    unit: "seconds",
+    help: "Finished clips are never shorter than this.",
+    min: 5,
+    max: 60,
+  },
+  {
+    key: "clip_max_s",
+    label: "Longest clip",
+    unit: "seconds",
+    help: "Finished clips are never longer than this. The cut keeps the pay-off and trims the start.",
+    min: 10,
+    max: 180,
+  },
   {
     key: "clip_before_s",
     label: "Before the moment",
@@ -294,6 +310,89 @@ export function NumberSettings({ title, fields }: { title: string; fields: Numbe
   );
 }
 
+function gb(bytes: number): string {
+  if (bytes < 1024 ** 3) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function StorageCard() {
+  const [usage, setUsage] = useState<StorageUsage | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .storage()
+      .then(setUsage)
+      .catch(() => setUsage(null));
+  }, []);
+
+  if (!usage) return null;
+  const rows: [string, number, string][] = [
+    ["Live stream buffers", usage.bytes.buffer, "the last few minutes of each live stream"],
+    ["Clips", usage.bytes.clips, "clips waiting for review or posting"],
+    ["Footage for clips", usage.bytes.raw, "kept while a clip can still be re-rendered"],
+    ["Logs and database", usage.bytes.logs + usage.bytes.database, ""],
+  ];
+  return (
+    <div className="card">
+      <h3>Storage</h3>
+      <table className="table">
+        <tbody>
+          {rows.map(([label, bytes, help]) => (
+            <tr key={label}>
+              <td>
+                {label}
+                {help && <div className="muted small">{help}</div>}
+              </td>
+              <td className="right">{gb(bytes)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td>
+              <strong>Clipper total</strong>
+            </td>
+            <td className="right">
+              <strong>{gb(usage.total_bytes)}</strong>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Exported clips
+              <div className="muted small path">{usage.export_dir}</div>
+            </td>
+            <td className="right">{gb(usage.export_bytes)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="muted small">
+        Rejected clips are deleted at once. A clip's footage is deleted once it is posted or
+        rejected, and a stream's buffer about ten minutes after it ends. Exported clips are yours
+        to delete once uploaded.
+      </p>
+      <div className="form-foot">
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const result = await api.cleanUp();
+              setUsage(result);
+              setNote(`Freed ${gb(result.freed_bytes ?? 0)}.`);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Clean up now
+        </button>
+        {note && <span className="muted small">{note}</span>}
+      </div>
+    </div>
+  );
+}
+
 export function Settings() {
   const [secrets, setSecrets] = useState<SecretInfo[] | null>(null);
   const [keychain, setKeychain] = useState<Keychain | null>(null);
@@ -329,6 +428,7 @@ export function Settings() {
       <McpSettings />
       <h2>Recording</h2>
       <NumberSettings title="Stream buffer" fields={RECORDING_FIELDS} />
+      <StorageCard />
       <h2>Highlight detection</h2>
       <NumberSettings title="When is it a moment?" fields={DETECTION_FIELDS} />
       <h2>Clips and spending</h2>

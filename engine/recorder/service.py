@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from engine.db.audit import write_audit
-from engine.db.models import Streamer, StreamSession
+from engine.db.models import Moment, Streamer, StreamSession
 from engine.media.ffmpeg import ffmpeg_path, no_window_kwargs
 from engine.monitor.urls import StreamerRef
 from engine.recorder.store import PruneResult, SegmentStore
@@ -31,6 +31,8 @@ from engine.settings import SettingsStore
 log = logging.getLogger(__name__)
 
 RECONCILE_INTERVAL_S = 5.0
+# After a stream ends, its buffer is only needed until its moments are cut.
+ENDED_BUFFER_KEEP_S = 600
 _READ_SIZE = 64 * 1024
 _MAX_BACKOFF_S = 60.0
 
@@ -343,9 +345,10 @@ class Recorder:
 
         result = self.store.prune(
             now=now,
-            active=active,
+            # A stream that ended is kept while a moment from it still waits to be cut.
+            active=active | self._sessions_with_moments_in_progress(),
             keep_seconds=settings.buffer_minutes * 60,
-            ended_retention_seconds=settings.raw_retention_hours * 3600,
+            ended_retention_seconds=min(ENDED_BUFFER_KEEP_S, settings.raw_retention_hours * 3600),
             cap_bytes=int(settings.disk_cap_gb * 1024**3),
         )
         if result.capped and not self.last_prune.capped:
@@ -358,6 +361,14 @@ class Recorder:
                     details={"deleted_segments": result.capped},
                 )
         self.last_prune = result
+
+    def _sessions_with_moments_in_progress(self) -> set[int]:
+        with self._session_factory() as db:
+            return set(
+                db.scalars(
+                    select(Moment.session_id).where(Moment.status.in_(("detected", "scored")))
+                )
+            )
 
     def _record_buffer_paths(self, session_ids: list[int]) -> None:
         with self._session_factory.begin() as db:

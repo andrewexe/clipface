@@ -47,7 +47,7 @@ _FALLBACK_PRICE = (10.0, 50.0)
 SYSTEM_PROMPT = """\
 You score moments from live streams for a short-form clip channel. For each moment you \
 get what was said (with timestamps), why the moment was flagged, and the stream's title \
-and game. You decide whether it would make a good vertical clip of 15 to 40 seconds, \
+and game. You decide whether it would make a good vertical clip of the length given, \
 where the clip should start and end, and what to call it.
 
 What makes a good clip: something actually happens (a big play, a fail, a shock, a \
@@ -134,7 +134,8 @@ def build_user_message(draft: Draft) -> str:
         return (text or "").replace("<", "‹").replace(">", "›")
 
     return (
-        f"Window length: {draft.duration:.1f} seconds.\n"
+        f"Window length: {draft.duration:.1f} seconds. The clip must be between "
+        f"{draft.min_length:.0f} and {draft.max_length:.0f} seconds long.\n"
         f"Why it was flagged (our own measurements): {signals}\n\n"
         "<clip_data>\n"
         f"streamer: {safe(draft.streamer_name)}\n"

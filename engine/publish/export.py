@@ -6,6 +6,7 @@ holding the title, the caption, and the credit line every post must carry.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -48,14 +49,19 @@ def description(item: ExportItem) -> str:
 
 
 def export_clip(item: ExportItem, folder: Path) -> Path:
-    if not item.video.exists():
+    if not item.video.name or not item.video.is_file():
         raise ExportError("the clip's video file is missing")
     try:
         folder.mkdir(parents=True, exist_ok=True)
         base = f"{safe_name(item.streamer_name, 30)} - {safe_name(item.title)} [{item.clip_id}]"
         target = folder / f"{base}.mp4"
         partial = folder / f"{base}.mp4.part"
-        shutil.copyfile(item.video, partial)
+        partial.unlink(missing_ok=True)
+        try:
+            # Same drive: a hard link shares the bytes, so the export costs no space.
+            os.link(item.video, partial)
+        except OSError:
+            shutil.copyfile(item.video, partial)
         partial.replace(target)
         (folder / f"{base}.txt").write_text(
             f"Title:\n{item.title}\n\nDescription:\n{description(item)}\n", encoding="utf-8"
